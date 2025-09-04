@@ -194,7 +194,6 @@ Breifly describe your bot here for users.")
                 with left:
                     st.write(
                         f"• {meta['name']}  
-"
                         f"<small>{human_size(meta['size'])} · {meta['mime']}</small>",
                         unsafe_allow_html=True
                     )
