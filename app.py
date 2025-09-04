@@ -101,8 +101,7 @@ st.session_state.setdefault("uploaded_files", [])
 # --- Sidebar ----------------------------------------
 with st.sidebar:
     st.title("⚙️ Controls")
-    st.markdown("### About
-Breifly describe your bot here for users.")
+    st.markdown("### About Breifly describe your bot here for users.")
 
     # Model Selection Expander (testing different models)
     with st.expander(":material/text_fields_alt: Model Selection", expanded=True):
