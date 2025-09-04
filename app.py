@@ -88,9 +88,7 @@ try:
 except Exception as e:
     st.error(
         "Error initialising the Gemini client. "
-        "Check your `GEMINI_API_KEY` in Streamlit → Settings → Secrets.
-
-"
+        "Check your `GEMINI_API_KEY` in Streamlit → Settings → Secrets."
         f"Details: {e}"
     )
     st.stop()
