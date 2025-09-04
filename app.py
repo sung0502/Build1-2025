@@ -190,7 +190,7 @@ with st.sidebar:
                 left, right = st.columns([0.88, 0.12])
                 with left:
                     st.write(
-                        f"• {meta['name']}  
+                        f"• {meta['name']}"  
                         f"<small>{human_size(meta['size'])} · {meta['mime']}</small>",
                         unsafe_allow_html=True
                     )
