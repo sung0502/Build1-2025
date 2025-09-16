@@ -308,7 +308,8 @@ if user_prompt := st.chat_input("Message 'your bot name'…"):
 # Footer
 st.markdown(
     "<div style='text-align:center;color:gray;font-size:12px;'>"
-    "I can make mistakes—please verify important information."
+    "I’m here to help you create, edit, and check your schedule quickly and easily.
+Just type in plain language what you want, and I’ll handle the details. \n Set a study session tonight at 7. "
     "</div>",
     unsafe_allow_html=True,
 )
