@@ -44,8 +44,8 @@ try:
             "Bot Created by Sung Park (2025)\n"
             "I’m here to help you create, edit, and check your schedule quickly and easily."
             "Just type in plain language what you want, and I’ll handle the details.\n"
-            "Here are a few examples to get started:\n"
-            "1) Set a study session tonight at 7.   2) Move my workout to tomorrow morning.   3) What’s on my agenda for today?"
+            "Here are a few examples to get started:"
+            "1) Set a study session tonight at 7. 2) Move my workout to tomorrow morning. 3) What’s on my agenda for today?"
              ),
              use_container_width=True)
 except Exception as e:
