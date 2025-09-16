@@ -40,7 +40,15 @@ st.set_page_config(page_title="My Bot",  # <-- Change this also but always keep 
 # Load and display a custom image for your bot
 try:
     st.image(Image.open("Bot.png"),  # <-- make sure your image is called this or change it to be the same
-             caption="Bot Created by Sung Park (2025) <br> I’m here to help you create, edit, and check your schedule quickly and easily.<br> Just type in plain language what you want, and I’ll handle the details.<br> Here are a few examples to get started:<br> 1) Set a study session tonight at 7.<br> 2) Move my workout to tomorrow morning.<br> 3) What’s on my agenda for today? ",  # <-- change with your bot name and your own name
+             caption=(
+            "Bot Created by Sung Park (2025)\n"
+            "I’m here to help you create, edit, and check your schedule quickly and easily.\n"
+            "Just type in plain language what you want, and I’ll handle the details.\n\n"
+            "Here are a few examples to get started:\n"
+            "1) Set a study session tonight at 7.\n"
+            "2) Move my workout to tomorrow morning.\n"
+            "3) What’s on my agenda for today?"
+             ),
              use_container_width=True)
 except Exception as e:
     st.error(f"Error loading image: {e}")
