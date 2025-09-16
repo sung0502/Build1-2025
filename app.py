@@ -46,7 +46,7 @@ except Exception as e:
     st.error(f"Error loading image: {e}")
 
 # Bot Title
-st.markdown("<h1 style='text-align: center;'>YOUR BOT'S NAME</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>TimeBuddy</h1>", unsafe_allow_html=True)
 
 # --- Helper -----------------------------------------
 def load_developer_prompt() -> str:
