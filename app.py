@@ -139,13 +139,21 @@ def infer_date(text: str, base_dt: datetime) -> date:
         return base_dt.date()
 
 def parse_time_range(text: str) -> Optional[Tuple[time, time]]:
-    t = text.lower().replace("—","-").replace("–","-").replace(" to ","-")
-    m = re.search(r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?', t)
-    if not m: return None
-    h1,m1,ap1,h2,m2,ap2 = m.groups()
-    h1,h2 = int(h1), int(h2)
-    m1 = int(m1) if m1 else 0
-    m2 = int(m2) if m2 else 0
+    """
+    Robustly parse time ranges like:
+      - 7-9
+      - 7–9
+      - 7pm-9pm
+      - 7-9pm  (pm applies to both)
+      - 07:00-09:00
+      - ...even when a YYYY-MM-DD date is present earlier in the string.
+    """
+    t = text.lower().replace("—", "-").replace("–", "-").replace(" to ", "-")
+
+    pattern = r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?'
+    matches = list(re.finditer(pattern, t))
+    if not matches:
+        return None
 
     def to_24h(h, mm, ap):
         if ap == "am":
@@ -154,13 +162,36 @@ def parse_time_range(text: str) -> Optional[Tuple[time, time]]:
             if h != 12: h += 12
         return time(hour=h, minute=mm)
 
-    if ap1 or ap2:
-        t1 = to_24h(h1,m1,ap1)
-        t2 = to_24h(h2,m2,ap2)
-    else:
-        t1 = time(hour=h1, minute=m1)
-        t2 = time(hour=h2, minute=m2)
-    return t1, t2
+    # Walk matches from the END so we prefer the real time range (e.g., after a YYYY-MM-DD date)
+    for m in reversed(matches):
+        h1, m1, ap1, h2, m2, ap2 = m.groups()
+        h1, h2 = int(h1), int(h2)
+        m1 = int(m1) if m1 else 0
+        m2 = int(m2) if m2 else 0
+
+        # If only one side has am/pm, assume the other side shares it (handles "7-9pm")
+        if (ap1 is None) and (ap2 in ("am", "pm")):
+            ap1 = ap2
+        if (ap2 is None) and (ap1 in ("am", "pm")):
+            ap2 = ap1
+
+        try:
+            if ap1 or ap2:
+                t1 = to_24h(h1, m1, ap1)
+                t2 = to_24h(h2, m2, ap2)
+            else:
+                # Validate ranges before building time() to avoid ValueError (e.g., 25-09 from a date)
+                if not (0 <= h1 <= 23 and 0 <= m1 <= 59 and 0 <= h2 <= 23 and 0 <= m2 <= 59):
+                    continue
+                t1 = time(hour=h1, minute=m1)
+                t2 = time(hour=h2, minute=m2)
+            return t1, t2
+        except ValueError:
+            # Not a valid time range; try the previous match
+            continue
+
+    # No valid match found
+    return None
 
 def parse_duration(text: str) -> Optional[int]:
     t = text.lower()
