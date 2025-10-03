@@ -176,8 +176,14 @@ if 'conversation_stage' not in st.session_state:
 if 'pending_slots' not in st.session_state:
     st.session_state.pending_slots = {}
     
-if 'awaiting_confirmation' not in st.session_state:
-    st.session_state.awaiting_confirmation = False
+if 'message_input' not in st.session_state:
+    st.session_state.message_input = ""
+    
+if 'clear_input' not in st.session_state:
+    st.session_state.clear_input = False
+    
+if 'message_to_process' not in st.session_state:
+    st.session_state.message_to_process = ""
     
 if 'last_proposal' not in st.session_state:
     st.session_state.last_proposal = None
@@ -287,15 +293,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Navigation menu
-    menu_option = st.selectbox(
-        "Navigation",
-        ["📅 Calendar", "✅ Tasks", "📊 Analytics", "⚙️ Settings", "❓ How to Use"],
-        label_visibility="collapsed"
-    )
-    
-    st.divider()
-    
     # Today's Stats
     st.markdown("### Today's Overview")
     today_tasks = get_today_schedules()
@@ -382,17 +379,24 @@ with col_left:
             if st.button(label, key=f"quick_{label}", use_container_width=True):
                 st.session_state.chat_input = command
     
-    # Chat input
+    # Chat input with clear functionality
+    def on_send_click():
+        if st.session_state.msg_input.strip():
+            # Store the message to process
+            st.session_state.message_to_process = st.session_state.msg_input
+            # Clear the input
+            st.session_state.msg_input = ""
+    
     user_input = st.text_area(
         "Message TimeBuddy",
         placeholder="Try: 'Add team meeting tomorrow at 2pm for 1 hour' or 'Show me today's schedule'",
         height=80,
-        key="chat_input"
+        key="msg_input"
     )
     
     col1, col2 = st.columns([1, 5])
     with col1:
-        send_button = st.button("📤 Send", use_container_width=True)
+        send_button = st.button("📤 Send", use_container_width=True, on_click=on_send_click)
     with col2:
         clear_button = st.button("🗑️ Clear Chat", use_container_width=True)
     
@@ -404,10 +408,13 @@ with col_left:
         st.session_state.last_proposal = None
         st.rerun()
     
-    # Process user input
-    if send_button and user_input.strip():
+    # Process user input if there's a message to process
+    if 'message_to_process' in st.session_state and st.session_state.message_to_process:
+        user_message = st.session_state.message_to_process
+        st.session_state.message_to_process = ""  # Clear after processing
+        
         # Add user message to history
-        st.session_state.chat_history.append({'role': 'user', 'content': user_input})
+        st.session_state.chat_history.append({'role': 'user', 'content': user_message})
         
         try:
             # Prepare context with current state
@@ -421,7 +428,7 @@ with col_left:
             Today's date: {date.today().isoformat()}
             Current time: {datetime.now().strftime("%H:%M")}
             
-            User message: {user_input}
+            User message: {user_message}
             
             Follow the rules in your identity carefully. Route to appropriate stage, collect required slots, 
             and confirm before saving. Always provide the "Saved ✅" confirmation with overview after saving.
@@ -482,55 +489,140 @@ with col_left:
         st.rerun()
 
 with col_right:
-    # Today's Tasks Panel
-    st.markdown("### 📋 Today's Tasks")
+    # Tab selection for different views
+    view_tab = st.tabs(["📋 Tasks", "📅 Calendar", "📊 Analytics"])
     
-    today_tasks = get_today_schedules()
-    
-    if today_tasks:
-        for task in sorted(today_tasks, key=lambda x: x['start_time']):
-            # Create task card
-            status_icon = "✅" if task['completed'] else "⏰"
-            card_class = "task-completed" if task['completed'] else "task-card"
-            
-            with st.container():
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    # Toggle completion
-                    if st.checkbox("", value=task['completed'], key=f"task_{task['id']}"):
-                        task['completed'] = not task['completed']
-                        st.rerun()
-                
-                with col2:
-                    st.markdown(format_schedule_display(task))
-    else:
-        st.info("No tasks scheduled for today. Add one using the chat!")
-    
-    st.divider()
-    
-    # Week Overview
-    st.markdown("### 📅 This Week")
-    week_tasks = get_week_schedules()
-    
-    if week_tasks:
-        # Group by date
-        tasks_by_date = {}
-        for task in week_tasks:
-            task_date = task['date']
-            if task_date not in tasks_by_date:
-                tasks_by_date[task_date] = []
-            tasks_by_date[task_date].append(task)
+    with view_tab[0]:
+        # Tasks View - Today's Tasks and Week Overview
+        st.markdown("### Today's Tasks")
         
-        # Display by date
-        for task_date in sorted(tasks_by_date.keys()):
-            date_obj = datetime.fromisoformat(task_date).date()
-            date_label = date_obj.strftime("%a, %b %d")
+        today_tasks = get_today_schedules()
+        
+        if today_tasks:
+            for task in sorted(today_tasks, key=lambda x: x['start_time']):
+                # Create task card
+                status_icon = "✅" if task['completed'] else "⏰"
+                card_class = "task-completed" if task['completed'] else "task-card"
+                
+                with st.container():
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        # Toggle completion
+                        if st.checkbox("", value=task['completed'], key=f"task_{task['id']}"):
+                            task['completed'] = not task['completed']
+                            st.rerun()
+                    
+                    with col2:
+                        st.markdown(format_schedule_display(task))
+        else:
+            st.info("No tasks scheduled for today. Add one using the chat!")
+        
+        st.divider()
+        
+        # Week Overview
+        st.markdown("### This Week")
+        week_tasks = get_week_schedules()
+        
+        if week_tasks:
+            # Group by date
+            tasks_by_date = {}
+            for task in week_tasks:
+                task_date = task['date']
+                if task_date not in tasks_by_date:
+                    tasks_by_date[task_date] = []
+                tasks_by_date[task_date].append(task)
             
-            with st.expander(f"**{date_label}** ({len(tasks_by_date[task_date])} tasks)"):
-                for task in tasks_by_date[task_date]:
-                    st.markdown(format_schedule_display(task))
-    else:
-        st.info("No tasks scheduled this week.")
+            # Display by date
+            for task_date in sorted(tasks_by_date.keys()):
+                date_obj = datetime.fromisoformat(task_date).date()
+                date_label = date_obj.strftime("%a, %b %d")
+                
+                with st.expander(f"**{date_label}** ({len(tasks_by_date[task_date])} tasks)"):
+                    for task in tasks_by_date[task_date]:
+                        st.markdown(format_schedule_display(task))
+        else:
+            st.info("No tasks scheduled this week.")
+    
+    with view_tab[1]:
+        # Calendar View
+        st.markdown("### Weekly Calendar")
+        
+        # Get current week dates
+        today = date.today()
+        start_week = today - timedelta(days=today.weekday())
+        week_dates = [start_week + timedelta(days=i) for i in range(7)]
+        
+        # Create calendar grid header
+        cols = st.columns(7)
+        for i, week_date in enumerate(week_dates):
+            with cols[i]:
+                day_name = week_date.strftime("%a")
+                day_num = week_date.strftime("%d")
+                is_today = week_date == today
+                
+                if is_today:
+                    st.markdown(f"**{day_name}**  \n**{day_num}** 📍")
+                else:
+                    st.markdown(f"**{day_name}**  \n{day_num}")
+        
+        st.divider()
+        
+        # Display schedules for each day
+        cols = st.columns(7)
+        for i, week_date in enumerate(week_dates):
+            with cols[i]:
+                day_schedules = [s for s in st.session_state.schedules 
+                                if s['date'] == week_date.isoformat()]
+                
+                if day_schedules:
+                    for schedule in sorted(day_schedules, key=lambda x: x['start_time']):
+                        event_color = {
+                            'work': '🔵',
+                            'meeting': '🟡',
+                            'personal': '🟢',
+                            'break': '⚪'
+                        }.get(schedule['type'], '⚫')
+                        
+                        st.markdown(f"{event_color} {schedule['start_time'][:5]}")
+                        st.caption(schedule['title'][:15] + ('...' if len(schedule['title']) > 15 else ''))
+                else:
+                    st.markdown("—")
+    
+    with view_tab[2]:
+        # Analytics View
+        st.markdown("### Time Analytics")
+        
+        # Calculate stats
+        total_scheduled = len(st.session_state.schedules)
+        completed = len([s for s in st.session_state.schedules if s['completed']])
+        
+        # Display metrics
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Scheduled", total_scheduled)
+            st.metric("Completion Rate", f"{(completed/total_scheduled*100 if total_scheduled > 0 else 0):.1f}%")
+        
+        with col2:
+            st.metric("Completed", completed)
+            st.metric("Pending", total_scheduled - completed)
+        
+        st.divider()
+        
+        # Task breakdown by type
+        st.markdown("### Task Breakdown")
+        task_types = {}
+        for schedule in st.session_state.schedules:
+            task_type = schedule['type']
+            if task_type not in task_types:
+                task_types[task_type] = 0
+            task_types[task_type] += 1
+        
+        if task_types:
+            for task_type, count in task_types.items():
+                emoji = {'work': '💼', 'meeting': '🤝', 'personal': '🏃', 'break': '☕'}.get(task_type, '📅')
+                st.markdown(f"{emoji} **{task_type.capitalize()}**: {count} tasks")
+        else:
+            st.info("No data to display yet. Start scheduling tasks!")
 
 # Footer
 st.divider()
