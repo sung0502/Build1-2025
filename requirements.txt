@@ -1,4 +1,26 @@
-# --- Core packages ---
-google-genai>=1.26.0      # new GenAI SDK with Search grounding  
-streamlit>=1.49.0         # current Streamlit release  
-pillow>=11.3.0            # image display (PIL)  
+# TimeBuddy Streamlit App Requirements v2
+# Core dependencies for time management assistant
+
+# Google GenAI SDK for Gemini API
+google-genai>=0.8.0
+
+# Streamlit framework
+streamlit>=1.40.0
+
+# Date/time handling
+python-dateutil>=2.9.0
+
+# UUID generation for unique IDs
+# (included in Python standard library, no install needed)
+
+# JSON handling
+# (included in Python standard library, no install needed)
+
+# Optional: For enhanced UI components
+streamlit-extras>=0.4.0
+
+# Optional: For better date parsing
+dateparser>=1.2.0
+
+# For timezone support
+pytz>=2024.1
