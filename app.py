@@ -293,34 +293,45 @@ with st.sidebar:
     
     st.divider()
     
-    # Today's Stats
-    st.markdown("### Today's Overview")
-    today_tasks = get_today_schedules()
-    completed_tasks = len([t for t in today_tasks if t['completed']])
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Tasks", len(today_tasks))
-    with col2:
-        st.metric("Completed", completed_tasks)
-    
-    # Quick Actions
-    st.markdown("### Quick Actions")
-    if st.button("➕ Add Task", use_container_width=True):
-        st.session_state.conversation_stage = "PLAN_CREATE"
-        
-    if st.button("📋 Show Today", use_container_width=True):
-        st.session_state.conversation_stage = "PLAN_CHECK"
-        
-    if st.button("📅 View Week", use_container_width=True):
-        st.session_state.conversation_stage = "PLAN_CHECK"
-    
-    st.divider()
-    
     # User Profile
     st.markdown("### User Profile")
     st.markdown("👤 **User**")
     st.caption("Free Plan")
+    
+    st.divider()
+    
+    # About Section
+    with st.expander("ℹ️ About TimeBuddy"):
+        st.markdown("""
+        **TimeBuddy** is your AI-powered personal time management assistant.
+        
+        ### How to Use:
+        
+        **Creating Tasks:**
+        - "Add team meeting tomorrow at 2pm for 1 hour"
+        - "Schedule workout at 7am"
+        - "Block 2 hours for deep work"
+        
+        **Editing Tasks:**
+        - "Move my workout to 8am"
+        - "Cancel the 3pm meeting"
+        - "Extend lunch break by 30 minutes"
+        
+        **Checking Schedule:**
+        - "Show me today's schedule"
+        - "What's on my calendar this week?"
+        - "Do I have anything at 3pm?"
+        
+        **Tips:**
+        - Use natural language - TimeBuddy understands context
+        - Confirm before saving to avoid mistakes
+        - Mark tasks complete by checking the box
+        - Switch between Tasks, Calendar, and Analytics views
+        
+        **Version:** 1.0  
+        **Powered by:** Gemini AI
+        """)
+
 
 # --- Main Content Area ---------------------------------------------------
 # Header
