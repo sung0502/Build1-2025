@@ -395,14 +395,15 @@ with col_left:
         if st.session_state.msg_input.strip():
             # Store the message to process
             st.session_state.message_to_process = st.session_state.msg_input
-            # Clear the input
-            st.session_state.msg_input = ""
+            # Clear the input by triggering rerun with empty value
     
+    # Create text area that will be cleared after sending
     user_input = st.text_area(
         "Message TimeBuddy",
         placeholder="Try: 'Add team meeting tomorrow at 2pm for 1 hour' or 'Show me today's schedule'",
         height=80,
-        key="msg_input"
+        key="msg_input",
+        value=st.session_state.get('message_input', '')  # Use session state value
     )
     
     col1, col2 = st.columns([1, 5])
@@ -422,10 +423,13 @@ with col_left:
     # Process user input if there's a message to process
     if 'message_to_process' in st.session_state and st.session_state.message_to_process:
         user_message = st.session_state.message_to_process
-        st.session_state.message_to_process = ""  # Clear after processing
         
         # Add user message to history
         st.session_state.chat_history.append({'role': 'user', 'content': user_message})
+        
+        # Clear the message after adding to history
+        st.session_state.message_to_process = ""
+        st.session_state.message_input = ""  # Reset the input field value
         
         try:
             # Prepare context with current state
