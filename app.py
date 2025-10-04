@@ -392,23 +392,23 @@ with col_left:
     
     # Chat input with clear functionality
     def on_send_click():
-        if st.session_state.msg_input.strip():
+        if st.session_state.msg_input and st.session_state.msg_input.strip():
             # Store the message to process
             st.session_state.message_to_process = st.session_state.msg_input
-            # Clear the input by triggering rerun with empty value
+            # Clear the input field
+            st.session_state.msg_input = ""
     
     # Create text area that will be cleared after sending
     user_input = st.text_area(
         "Message TimeBuddy",
         placeholder="Try: 'Add team meeting tomorrow at 2pm for 1 hour' or 'Show me today's schedule'",
         height=80,
-        key="msg_input",
-        value=st.session_state.get('message_input', '')  # Use session state value
+        key="msg_input"
     )
     
     col1, col2 = st.columns([1, 5])
     with col1:
-        send_button = st.button("📤 Send", use_container_width=True, on_click=on_send_click)
+        send_button = st.button("📤 Send", use_container_width=True, on_click=on_send_click, disabled=not user_input.strip())
     with col2:
         clear_button = st.button("🗑️ Clear Chat", use_container_width=True)
     
