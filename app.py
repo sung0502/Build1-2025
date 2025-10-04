@@ -264,137 +264,6 @@ def get_week_schedules():
             week_schedules.append(s)
     return week_schedules
 
-def parse_task_from_response(response_text, user_message):
-    """Parse task details from bot response and user message"""
-    import re
-    
-    task_info = {
-        'title': None,
-        'date': today_local().isoformat(),
-        'start_time': None,
-        'end_time': None,
-        'duration': 60  # default duration
-    }
-    
-    # Parse from user message first
-    user_lower = user_message.lower()
-    
-    # Extract title patterns
-    title_patterns = [
-        r'add\s+(.+?)\s+(?:at|on|tomorrow|today)',
-        r'schedule\s+(.+?)\s+(?:at|for|tomorrow|today)',
-        r'create\s+(.+?)\s+(?:at|for|tomorrow|today)',
-        r'"([^"]+)"',
-        r'task:\s*(.+?)(?:\s+at|\s+on|$)',
-    ]
-    
-    for pattern in title_patterns:
-        match = re.search(pattern, user_lower)
-        if match:
-            task_info['title'] = match.group(1).strip().title()
-            break
-    
-    if not task_info['title']:
-        if "meeting" in user_lower:
-            task_info['title'] = "Meeting"
-        elif "workout" in user_lower or "gym" in user_lower:
-            task_info['title'] = "Workout"
-        elif "lunch" in user_lower:
-            task_info['title'] = "Lunch Break"
-        elif "study" in user_lower:
-            task_info['title'] = "Study Session"
-        else:
-            task_info['title'] = "New Task"
-    
-    # Parse date
-    if "tomorrow" in user_lower:
-        task_info['date'] = (today_local() + timedelta(days=1)).isoformat()
-    elif "today" in user_lower:
-        task_info['date'] = today_local().isoformat()
-    else:
-        days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        for dayname in days:
-            if dayname in user_lower:
-                today_d = today_local()
-                target_day = days.index(dayname)
-                days_ahead = target_day - today_d.weekday()
-                if days_ahead <= 0:
-                    days_ahead += 7
-                task_info['date'] = (today_d + timedelta(days=days_ahead)).isoformat()
-                break
-    
-    # Parse time
-    time_patterns = [
-        r'at\s+(\d{1,2})\s*(?:am|pm)',
-        r'at\s+(\d{1,2}):(\d{2})\s*(?:am|pm)?',
-        r'(\d{1,2})\s*(?:am|pm)\s+to\s+(\d{1,2})\s*(?:am|pm)',
-        r'(\d{1,2}):(\d{2})\s+to\s+(\d{1,2}):(\d{2})',
-    ]
-    
-    for pattern in time_patterns:
-        match = re.search(pattern, user_lower)
-        if match:
-            groups = match.groups()
-            if len(groups) >= 1:
-                hour = int(groups[0])
-                if 'pm' in user_lower[match.start():match.end()] and hour < 12:
-                    hour += 12
-                elif 'am' in user_lower[match.start():match.end()] and hour == 12:
-                    hour = 0
-                task_info['start_time'] = f"{hour:02d}:00"
-                break
-    
-    # Parse duration
-    duration_patterns = [
-        r'for\s+(\d+)\s*hour',
-        r'for\s+(\d+)\s*minute',
-        r'(\d+)\s*hour\s+meeting',
-        r'(\d+)\s*min\s+',
-    ]
-    
-    for pattern in duration_patterns:
-        match = re.search(pattern, user_lower)
-        if match:
-            duration_value = int(match.group(1))
-            if 'hour' in pattern:
-                task_info['duration'] = duration_value * 60
-            else:
-                task_info['duration'] = duration_value
-            break
-    
-    # Set default time if not found
-    if not task_info['start_time']:
-        task_info['start_time'] = "09:00"
-    
-    # Calculate end time from duration
-    start_hour, start_min = map(int, task_info['start_time'].split(':'))
-    end_minutes = start_hour * 60 + start_min + task_info['duration']
-    end_hour = end_minutes // 60
-    end_min = end_minutes % 60
-    task_info['end_time'] = f"{end_hour:02d}:{end_min:02d}"
-    
-    return task_info
-
-def update_schedule_entry(schedule_id, updates):
-    """Update an existing schedule entry"""
-    for schedule in st.session_state.schedules:
-        if schedule['id'] == schedule_id:
-            schedule.update(updates)
-            return True
-    return False
-
-def delete_schedule_entry(schedule_id):
-    """Delete a schedule entry"""
-    st.session_state.schedules = [s for s in st.session_state.schedules if s['id'] != schedule_id]
-
-def mark_task_complete(schedule_id):
-    """Mark a task as complete"""
-    for schedule in st.session_state.schedules:
-        if schedule['id'] == schedule_id:
-            schedule['completed'] = True
-            return True
-    return False
-
 def format_schedule_display(schedule):
     """Format schedule for display"""
     event_type_emoji = {
@@ -428,6 +297,119 @@ def get_schedules_summary():
         summary.append(f"- {status} {schedule['title']} on {date_str} at {schedule['start_time']}")
     
     return "\n".join(summary)
+
+# ---------- Chat parsing helpers (robust saving) ----------
+CONFIRM_TOKENS = ("yes", "y", "ok", "okay", "save", "confirm", "sure")
+
+def _normalize_task_dict(d: dict) -> dict:
+    """Ensure keys exist and types are sane."""
+    title = d.get("title", "New Task")
+    date_str = d.get("date", today_local().isoformat())
+    start = d.get("start_time", "09:00")
+    duration = d.get("duration", 60)
+    try:
+        duration = int(duration)
+    except:
+        duration = 60
+    # compute end_time
+    sh, sm = map(int, start.split(":"))
+    end_m = sh*60 + sm + duration
+    eh, em = divmod(end_m, 60)
+    end = f"{eh:02d}:{em:02d}"
+    return {"title": title, "date": date_str, "start_time": start, "duration": duration, "end_time": end}
+
+def extract_task_json_after(label: str, text: str):
+    """
+    Try to extract JSON after a marker like 'TASK_ADD:'.
+    Accepts plain JSON or fenced ```json blocks.
+    """
+    # fenced first
+    m = re.search(rf"{label}\s*```json\s*(\{{.*?\}})\s*```", text, flags=re.S|re.I)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except:
+            pass
+    # simple brace capture (first object after label)
+    m = re.search(rf"{label}\s*(\{{[^{{}}]*\}})", text, flags=re.S|re.I)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except:
+            pass
+    return None
+
+def parse_task_from_texts(bot_text: str, user_text: str) -> dict:
+    """
+    Fallback heuristic if no structured JSON is present.
+    """
+    # Default scaffold
+    task_info = {
+        'title': None,
+        'date': today_local().isoformat(),
+        'start_time': None,
+        'end_time': None,
+        'duration': 60
+    }
+    lower = (user_text or "").lower()
+    # Title guess
+    title_patterns = [
+        r'add\s+(.+?)\s+(?:at|on|tomorrow|today)',
+        r'schedule\s+(.+?)\s+(?:at|for|tomorrow|today)',
+        r'create\s+(.+?)\s+(?:at|for|tomorrow|today)',
+        r'"([^"]+)"',
+        r'task:\s*(.+?)(?:\s+at|\s+on|$)',
+    ]
+    for p in title_patterns:
+        m = re.search(p, lower)
+        if m:
+            task_info['title'] = m.group(1).strip().title()
+            break
+    if not task_info['title']:
+        for kw, title in (("meeting","Meeting"),("workout","Workout"),("gym","Workout"),("lunch","Lunch Break"),("study","Study Session")):
+            if kw in lower:
+                task_info['title'] = title; break
+        if not task_info['title']:
+            task_info['title'] = "New Task"
+    # Date
+    if "tomorrow" in lower:
+        task_info['date'] = (today_local() + timedelta(days=1)).isoformat()
+    elif "today" in lower:
+        task_info['date'] = today_local().isoformat()
+    else:
+        days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
+        for dayname in days:
+            if dayname in lower:
+                today_d = today_local()
+                target = days.index(dayname)
+                ahead = target - today_d.weekday()
+                if ahead <= 0: ahead += 7
+                task_info['date'] = (today_d + timedelta(days=ahead)).isoformat()
+                break
+    # Time (simple)
+    tm = re.search(r'at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?', lower)
+    if tm:
+        hh = int(tm.group(1)); mm = int(tm.group(2) or 0)
+        ampm = tm.group(3)
+        if ampm == 'pm' and hh < 12: hh += 12
+        if ampm == 'am' and hh == 12: hh = 0
+        task_info['start_time'] = f"{hh:02d}:{mm:02d}"
+    if not task_info['start_time']:
+        task_info['start_time'] = "09:00"
+    # Duration
+    dm = re.search(r'(\d+)\s*(?:hours|hour|hrs|hr)', lower)
+    if dm:
+        task_info['duration'] = int(dm.group(1)) * 60
+    else:
+        dm = re.search(r'(\d+)\s*(?:mins|min|minutes|minute)', lower)
+        if dm:
+            task_info['duration'] = int(dm.group(1))
+    # End time
+    sh, sm = map(int, task_info['start_time'].split(":"))
+    end_m = sh*60 + sm + task_info['duration']
+    eh, em = divmod(end_m, 60)
+    task_info['end_time'] = f"{eh:02d}:{em:02d}"
+    return task_info
 
 # --- Generation Configuration ---------------------------------------------
 generation_cfg = types.GenerateContentConfig(
@@ -608,9 +590,23 @@ with col_left:
     if 'pending_message' in st.session_state and default_text:
         del st.session_state.pending_message
     
-    # Process send
+    # -------------------- Process send --------------------
     if send_button and user_input.strip():
         st.session_state.chat_history.append({'role': 'user', 'content': user_input})
+        
+        # If user is confirming a pending proposal, save immediately
+        if st.session_state.last_proposal and user_input.strip().lower().startswith(CONFIRM_TOKENS):
+            data = _normalize_task_dict(st.session_state.last_proposal)
+            add_schedule_entry(
+                title=data["title"],
+                date_str=data["date"],
+                start_time=data["start_time"],
+                end_time=data["end_time"],
+                duration=data["duration"],
+            )
+            st.session_state.last_proposal = None
+            st.session_state.chat_history.append({'role': 'bot', 'content': "Saved ✅ Your plan is on the calendar."})
+            st.rerun()
         
         try:
             # Build conversation history for context
@@ -657,61 +653,73 @@ with col_left:
             
             bot_response = response.text if response.text else "I understand. Let me help you with that."
             
-            # Process different task actions
-            if "TASK_ADD:" in bot_response:
-                match = re.search(r'TASK_ADD:\s*(\{[^}]+\})', bot_response)
-                if match:
-                    try:
-                        task_data = json.loads(match.group(1))
-                        add_schedule_entry(
-                            title=task_data.get('title', 'New Task'),
-                            date_str=task_data.get('date', today_local().isoformat()),
-                            start_time=task_data.get('start_time', '09:00'),
-                            duration=task_data.get('duration', 60)
-                        )
-                    except:
-                        task_info = parse_task_from_response(bot_response, user_input)
-                        add_schedule_entry(
-                            title=task_info['title'],
-                            date_str=task_info['date'],
-                            start_time=task_info['start_time'],
-                            duration=task_info['duration']
-                        )
-                bot_response = re.sub(r'TASK_ADD:\s*\{[^}]+\}', '', bot_response)
+            # ---- Save logic (robust) ----
+            saved_now = False
+            # 1) Structured immediate add
+            task_json = extract_task_json_after("TASK_ADD:", bot_response) or extract_task_json_after("TASK_SAVE:", bot_response)
+            if task_json:
+                data = _normalize_task_dict(task_json)
+                add_schedule_entry(
+                    title=data["title"],
+                    date_str=data["date"],
+                    start_time=data["start_time"],
+                    end_time=data["end_time"],
+                    duration=data["duration"],
+                )
+                saved_now = True
+                # strip protocol from bot text
+                bot_response = re.sub(r'(TASK_ADD:|TASK_SAVE:)\s*```json.*?```', '', bot_response, flags=re.S|re.I)
+                bot_response = re.sub(r'(TASK_ADD:|TASK_SAVE:)\s*\{[^{}]*\}', '', bot_response, flags=re.S|re.I)
             
-            elif "TASK_EDIT:" in bot_response:
-                match = re.search(r'TASK_EDIT:\s*(\{[^}]+\})', bot_response)
-                if match:
-                    try:
-                        edit_data = json.loads(match.group(1))
-                        update_schedule_entry(edit_data.get('id'), edit_data)
-                    except:
-                        pass
-                bot_response = re.sub(r'TASK_EDIT:\s*\{[^}]+\}', '', bot_response)
+            # 2) If model is proposing (asks to save), capture proposal
+            if not saved_now:
+                # Heuristic: if bot asks to confirm, try to parse a proposal from bot + user
+                if re.search(r'\bsave this\?\b', bot_response, flags=re.I) or "confirm" in bot_response.lower():
+                    # Prefer any structured payload
+                    proposal = extract_task_json_after("TASK_PROPOSE:", bot_response) or task_json
+                    if not proposal:
+                        proposal = parse_task_from_texts(bot_response, user_input)
+                    st.session_state.last_proposal = proposal
+                    # Add our own little nudge
+                    st.session_state.chat_history.append({'role': 'bot',
+                        'content': "Please reply **yes** to save or **no** to cancel."})
+                else:
+                    # If user clearly asked to add and model might have responded casually, try immediate parse + save
+                    if any(k in user_input.lower() for k in ['add','schedule','create','plan','book']) and "saved" in bot_response.lower():
+                        proposal = extract_task_json_after("TASK_ADD:", bot_response) or parse_task_from_texts(bot_response, user_input)
+                        data = _normalize_task_dict(proposal)
+                        add_schedule_entry(
+                            title=data["title"],
+                            date_str=data["date"],
+                            start_time=data["start_time"],
+                            end_time=data["end_time"],
+                            duration=data["duration"],
+                        )
+                        saved_now = True
             
-            elif "TASK_DELETE:" in bot_response:
-                match = re.search(r'TASK_DELETE:\s*([a-zA-Z0-9-]+)', bot_response)
-                if match:
-                    delete_schedule_entry(match.group(1))
+            # 3) Completion / edit / delete passthroughs
+            if "TASK_EDIT:" in bot_response:
+                m = extract_task_json_after("TASK_EDIT:", bot_response)
+                if m:
+                    update_schedule_entry(m.get('id'), m)
+                bot_response = re.sub(r'TASK_EDIT:\s*\{[^{}]*\}', '', bot_response, flags=re.S|re.I)
+            if "TASK_DELETE:" in bot_response:
+                m = re.search(r'TASK_DELETE:\s*([a-zA-Z0-9-]+)', bot_response)
+                if m:
+                    delete_schedule_entry(m.group(1))
                 bot_response = re.sub(r'TASK_DELETE:\s*[a-zA-Z0-9-]+', '', bot_response)
-            
-            elif "TASK_COMPLETE:" in bot_response:
-                match = re.search(r'TASK_COMPLETE:\s*([a-zA-Z0-9-]+)', bot_response)
-                if match:
-                    mark_task_complete(match.group(1))
+            if "TASK_COMPLETE:" in bot_response:
+                m = re.search(r'TASK_COMPLETE:\s*([a-zA-Z0-9-]+)', bot_response)
+                if m:
+                    mark_task_complete(m.group(1))
                 bot_response = re.sub(r'TASK_COMPLETE:\s*[a-zA-Z0-9-]+', '', bot_response)
             
-            elif any(keyword in user_input.lower() for keyword in ['add', 'schedule', 'create', 'plan', 'book']):
-                if "Saved ✅" in bot_response:
-                    task_info = parse_task_from_response(bot_response, user_input)
-                    add_schedule_entry(
-                        title=task_info['title'],
-                        date_str=task_info['date'],
-                        start_time=task_info['start_time'],
-                        duration=task_info['duration']
-                    )
-            
+            # Append bot message
             st.session_state.chat_history.append({'role': 'bot', 'content': bot_response.strip()})
+            
+            # If we saved, force a refresh so right tabs reflect changes immediately
+            if saved_now:
+                st.rerun()
             
         except Exception as e:
             error_msg = f"Sorry, I encountered an error: {str(e)}"
@@ -731,14 +739,12 @@ with col_right:
         
         if today_tasks:
             for task in sorted(today_tasks, key=lambda x: x['start_time']):
-                status_icon = "✅" if task['completed'] else "⏰"
-                card_class = "task-completed" if task['completed'] else "task-card"
-                
                 with st.container():
                     col1, col2 = st.columns([1, 4])
                     with col1:
-                        if st.checkbox("", value=task['completed'], key=f"task_{task['id']}"):
-                            task['completed'] = not task['completed']
+                        checked = st.checkbox("", value=task['completed'], key=f"task_{task['id']}")
+                        if checked != task['completed']:
+                            task['completed'] = checked
                             st.rerun()
                     with col2:
                         st.markdown(format_schedule_display(task))
@@ -754,17 +760,14 @@ with col_right:
         if week_tasks:
             tasks_by_date = {}
             for task in week_tasks:
-                task_date = task['date']
-                if task_date not in tasks_by_date:
-                    tasks_by_date[task_date] = []
-                tasks_by_date[task_date].append(task)
+                tasks_by_date.setdefault(task['date'], []).append(task)
             
             for task_date in sorted(tasks_by_date.keys()):
                 date_obj = datetime.fromisoformat(task_date).date()
                 date_label = date_obj.strftime("%a, %b %d")
                 
                 with st.expander(f"**{date_label}** ({len(tasks_by_date[task_date])} tasks)"):
-                    for task in tasks_by_date[task_date]:
+                    for task in sorted(tasks_by_date[task_date], key=lambda x: x['start_time']):
                         st.markdown(format_schedule_display(task))
         else:
             st.info("No tasks scheduled this week.")
@@ -836,10 +839,7 @@ with col_right:
         st.markdown("### Task Breakdown")
         task_types = {}
         for schedule in st.session_state.schedules:
-            task_type = schedule['type']
-            if task_type not in task_types:
-                task_types[task_type] = 0
-            task_types[task_type] += 1
+            task_types[schedule['type']] = task_types.get(schedule['type'], 0) + 1
         
         if task_types:
             for task_type, count in task_types.items():
