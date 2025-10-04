@@ -4,6 +4,7 @@ import streamlit as st
 from datetime import datetime, timedelta, date, time
 import json
 import uuid
+import re
 from google import genai
 from google.genai import types
 
@@ -163,6 +164,11 @@ def load_developer_prompt() -> str:
 
 system_instructions = load_developer_prompt()
 
+# --- Helper Functions -----------------------------------------------------
+def generate_id():
+    """Generate unique ID for schedule entries"""
+    return str(uuid.uuid4())[:8]
+
 # --- Initialize Session State ----------------------------------------------
 if 'schedules' not in st.session_state:
     st.session_state.schedules = []
@@ -257,6 +263,140 @@ def get_week_schedules():
             week_schedules.append(s)
     return week_schedules
 
+def parse_task_from_response(response_text, user_message):
+    """Parse task details from bot response and user message"""
+    import re
+    
+    task_info = {
+        'title': None,
+        'date': date.today().isoformat(),
+        'start_time': None,
+        'end_time': None,
+        'duration': 60  # default duration
+    }
+    
+    # Parse from user message first
+    user_lower = user_message.lower()
+    
+    # Extract title patterns
+    title_patterns = [
+        r'add\s+(.+?)\s+(?:at|on|tomorrow|today)',
+        r'schedule\s+(.+?)\s+(?:at|for|tomorrow|today)',
+        r'create\s+(.+?)\s+(?:at|for|tomorrow|today)',
+        r'"([^"]+)"',  # quoted text
+        r'task:\s*(.+?)(?:\s+at|\s+on|$)',
+    ]
+    
+    for pattern in title_patterns:
+        match = re.search(pattern, user_lower)
+        if match:
+            task_info['title'] = match.group(1).strip().title()
+            break
+    
+    # If no title found, try to extract from response
+    if not task_info['title']:
+        if "meeting" in user_lower:
+            task_info['title'] = "Meeting"
+        elif "workout" in user_lower or "gym" in user_lower:
+            task_info['title'] = "Workout"
+        elif "lunch" in user_lower:
+            task_info['title'] = "Lunch Break"
+        elif "study" in user_lower:
+            task_info['title'] = "Study Session"
+        else:
+            task_info['title'] = "New Task"
+    
+    # Parse date
+    if "tomorrow" in user_lower:
+        task_info['date'] = (date.today() + timedelta(days=1)).isoformat()
+    elif "today" in user_lower:
+        task_info['date'] = date.today().isoformat()
+    else:
+        # Try to find day of week
+        days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        for day in days:
+            if day in user_lower:
+                # Calculate next occurrence of this day
+                today = date.today()
+                target_day = days.index(day)
+                days_ahead = target_day - today.weekday()
+                if days_ahead <= 0:
+                    days_ahead += 7
+                task_info['date'] = (today + timedelta(days=days_ahead)).isoformat()
+                break
+    
+    # Parse time
+    time_patterns = [
+        r'at\s+(\d{1,2})\s*(?:am|pm)',
+        r'at\s+(\d{1,2}):(\d{2})\s*(?:am|pm)?',
+        r'(\d{1,2})\s*(?:am|pm)\s+to\s+(\d{1,2})\s*(?:am|pm)',
+        r'(\d{1,2}):(\d{2})\s+to\s+(\d{1,2}):(\d{2})',
+    ]
+    
+    for pattern in time_patterns:
+        match = re.search(pattern, user_lower)
+        if match:
+            groups = match.groups()
+            if len(groups) >= 1:
+                hour = int(groups[0])
+                if 'pm' in user_lower[match.start():match.end()] and hour < 12:
+                    hour += 12
+                elif 'am' in user_lower[match.start():match.end()] and hour == 12:
+                    hour = 0
+                task_info['start_time'] = f"{hour:02d}:00"
+                break
+    
+    # Parse duration
+    duration_patterns = [
+        r'for\s+(\d+)\s*hour',
+        r'for\s+(\d+)\s*minute',
+        r'(\d+)\s*hour\s+meeting',
+        r'(\d+)\s*min\s+',
+    ]
+    
+    for pattern in duration_patterns:
+        match = re.search(pattern, user_lower)
+        if match:
+            duration_value = int(match.group(1))
+            if 'hour' in pattern:
+                task_info['duration'] = duration_value * 60
+            else:
+                task_info['duration'] = duration_value
+            break
+    
+    # Set default time if not found
+    if not task_info['start_time']:
+        task_info['start_time'] = "09:00"
+    
+    # Calculate end time from duration
+    start_hour, start_min = map(int, task_info['start_time'].split(':'))
+    end_minutes = start_hour * 60 + start_min + task_info['duration']
+    end_hour = end_minutes // 60
+    end_min = end_minutes % 60
+    task_info['end_time'] = f"{end_hour:02d}:{end_min:02d}"
+    
+    return task_info
+
+def update_schedule_entry(schedule_id, updates):
+    """Update an existing schedule entry"""
+    for schedule in st.session_state.schedules:
+        if schedule['id'] == schedule_id:
+            schedule.update(updates)
+            return True
+    return False
+
+def delete_schedule_entry(schedule_id):
+    """Delete a schedule entry"""
+    st.session_state.schedules = [s for s in st.session_state.schedules if s['id'] != schedule_id]
+
+def mark_task_complete(schedule_id):
+    """Mark a task as complete"""
+    for schedule in st.session_state.schedules:
+        if schedule['id'] == schedule_id:
+            schedule['completed'] = True
+            return True
+    return False
+
 def format_schedule_display(schedule):
     """Format schedule for display"""
     event_type_emoji = {
@@ -276,6 +416,20 @@ def format_schedule_display(schedule):
         time_str += f" ({schedule['duration']} min)"
     
     return f"{status} {emoji} **{schedule['title']}** - {time_str}"
+
+def get_schedules_summary():
+    """Get a formatted summary of all schedules"""
+    if not st.session_state.schedules:
+        return "No schedules yet."
+    
+    summary = []
+    for schedule in sorted(st.session_state.schedules, key=lambda x: (x['date'], x['start_time'])):
+        date_obj = datetime.fromisoformat(schedule['date']).date()
+        date_str = date_obj.strftime("%a, %b %d")
+        status = "✅" if schedule['completed'] else "⏰"
+        summary.append(f"- {status} {schedule['title']} on {date_str} at {schedule['start_time']}")
+    
+    return "\n".join(summary)
 
 # --- Generation Configuration ---------------------------------------------
 generation_cfg = types.GenerateContentConfig(
@@ -435,14 +589,15 @@ with col_left:
                 role = "User" if msg['role'] == 'user' else "Assistant"
                 conversation_text += f"{role}: {msg['content']}\n\n"
             
-            # Prepare context with current state
+            # Prepare enhanced context with TimeBuddy identity
             context = f"""
-            You are TimeBuddy, a time management assistant. Help the user manage their schedule.
+            {system_instructions}
             
             Current schedules in the system:
-            {json.dumps(st.session_state.schedules, indent=2) if st.session_state.schedules else "No schedules yet."}
+            {get_schedules_summary()}
             
             Today's date: {date.today().isoformat()}
+            Current day: {date.today().strftime("%A")}
             Current time: {datetime.now().strftime("%H:%M")}
             
             Recent conversation:
@@ -450,12 +605,16 @@ with col_left:
             
             Current user message: {user_input}
             
-            Instructions:
-            - If the user wants to add a task/event, ask for any missing information (title, date/time, duration)
-            - If the user confirms adding a task, respond with "CONFIRMED_ADD:" followed by the task details
-            - If the user wants to edit/delete a task, help them identify which one
-            - If the user wants to check their schedule, show them the relevant information
-            - Be helpful and conversational
+            Remember to follow the TimeBuddy conversation flow:
+            1. For PLAN_CREATE: Collect title, time/date, and duration. Then ask "Save this?" for confirmation.
+            2. For PLAN_EDIT: Identify the task and what changes to make.
+            3. For PLAN_CHECK: Show the relevant schedule information.
+            4. When user confirms saving, respond with "Saved ✅" and include a brief overview.
+            
+            If adding a task, include "TASK_ADD:" followed by JSON with title, date, start_time, duration.
+            If editing a task, include "TASK_EDIT:" followed by JSON with id and changes.
+            If deleting a task, include "TASK_DELETE:" followed by the task id.
+            If marking complete, include "TASK_COMPLETE:" followed by the task id.
             """
             
             # Generate response
@@ -467,24 +626,72 @@ with col_left:
             
             bot_response = response.text if response.text else "I understand. Let me help you with that."
             
-            # Check if bot confirmed adding a task
-            if "CONFIRMED_ADD:" in bot_response:
-                # Parse the task details (simplified for now)
-                # In a real implementation, you'd parse the details from the response
+            # Process different task actions
+            if "TASK_ADD:" in bot_response:
+                # Extract JSON after TASK_ADD:
+                import re
+                match = re.search(r'TASK_ADD:\s*(\{[^}]+\})', bot_response)
+                if match:
+                    try:
+                        task_data = json.loads(match.group(1))
+                        add_schedule_entry(
+                            title=task_data.get('title', 'New Task'),
+                            date_str=task_data.get('date', date.today().isoformat()),
+                            start_time=task_data.get('start_time', '09:00'),
+                            duration=task_data.get('duration', 60)
+                        )
+                    except:
+                        # Fallback to parsing from user message
+                        task_info = parse_task_from_response(bot_response, user_input)
+                        add_schedule_entry(
+                            title=task_info['title'],
+                            date_str=task_info['date'],
+                            start_time=task_info['start_time'],
+                            duration=task_info['duration']
+                        )
                 
-                # Example: Add a default task (you can enhance this parsing logic)
-                add_schedule_entry(
-                    title="New Task",
-                    date_str=date.today().isoformat(),
-                    start_time="09:00",
-                    duration=60
-                )
-                
-                # Clean the response to remove the CONFIRMED_ADD marker
-                bot_response = bot_response.replace("CONFIRMED_ADD:", "✅ Task added successfully!")
+                # Clean the response
+                bot_response = re.sub(r'TASK_ADD:\s*\{[^}]+\}', '', bot_response)
+            
+            elif "TASK_EDIT:" in bot_response:
+                # Handle task editing
+                match = re.search(r'TASK_EDIT:\s*(\{[^}]+\})', bot_response)
+                if match:
+                    try:
+                        edit_data = json.loads(match.group(1))
+                        update_schedule_entry(edit_data.get('id'), edit_data)
+                    except:
+                        pass
+                bot_response = re.sub(r'TASK_EDIT:\s*\{[^}]+\}', '', bot_response)
+            
+            elif "TASK_DELETE:" in bot_response:
+                # Handle task deletion
+                match = re.search(r'TASK_DELETE:\s*([a-zA-Z0-9-]+)', bot_response)
+                if match:
+                    delete_schedule_entry(match.group(1))
+                bot_response = re.sub(r'TASK_DELETE:\s*[a-zA-Z0-9-]+', '', bot_response)
+            
+            elif "TASK_COMPLETE:" in bot_response:
+                # Handle task completion
+                match = re.search(r'TASK_COMPLETE:\s*([a-zA-Z0-9-]+)', bot_response)
+                if match:
+                    mark_task_complete(match.group(1))
+                bot_response = re.sub(r'TASK_COMPLETE:\s*[a-zA-Z0-9-]+', '', bot_response)
+            
+            # Check for simple add patterns in user message if no explicit action
+            elif any(keyword in user_input.lower() for keyword in ['add', 'schedule', 'create', 'plan', 'book']):
+                if "Saved ✅" in bot_response:
+                    # Bot confirmed saving, parse and add task
+                    task_info = parse_task_from_response(bot_response, user_input)
+                    add_schedule_entry(
+                        title=task_info['title'],
+                        date_str=task_info['date'],
+                        start_time=task_info['start_time'],
+                        duration=task_info['duration']
+                    )
             
             # Add bot response to history
-            st.session_state.chat_history.append({'role': 'bot', 'content': bot_response})
+            st.session_state.chat_history.append({'role': 'bot', 'content': bot_response.strip()})
             
         except Exception as e:
             error_msg = f"Sorry, I encountered an error: {str(e)}"
