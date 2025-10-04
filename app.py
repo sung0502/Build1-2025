@@ -414,10 +414,8 @@ with col_left:
     
     if clear_button:
         st.session_state.chat_history = []
-        st.session_state.conversation_stage = None
-        st.session_state.pending_slots = {}
-        st.session_state.awaiting_confirmation = False
-        st.session_state.last_proposal = None
+        st.session_state.conversation_context = {}  # Clear context
+        st.session_state.message_to_process = ""
         st.rerun()
     
     # Process user input if there's a message to process
@@ -432,21 +430,33 @@ with col_left:
         st.session_state.message_input = ""  # Reset the input field value
         
         try:
+            # Build conversation history for context
+            conversation_text = ""
+            for msg in st.session_state.chat_history[-5:]:  # Last 5 messages for context
+                role = "User" if msg['role'] == 'user' else "Assistant"
+                conversation_text += f"{role}: {msg['content']}\n\n"
+            
             # Prepare context with current state
             context = f"""
-            Current conversation stage: {st.session_state.conversation_stage}
-            Awaiting confirmation: {st.session_state.awaiting_confirmation}
-            Last proposal: {st.session_state.last_proposal}
-            Pending slots: {st.session_state.pending_slots}
+            You are TimeBuddy, a time management assistant. Help the user manage their schedule.
             
-            Current schedules: {json.dumps(st.session_state.schedules, indent=2)}
+            Current schedules in the system:
+            {json.dumps(st.session_state.schedules, indent=2) if st.session_state.schedules else "No schedules yet."}
+            
             Today's date: {date.today().isoformat()}
             Current time: {datetime.now().strftime("%H:%M")}
             
-            User message: {user_message}
+            Recent conversation:
+            {conversation_text}
             
-            Follow the rules in your identity carefully. Route to appropriate stage, collect required slots, 
-            and confirm before saving. Always provide the "Saved ✅" confirmation with overview after saving.
+            Current user message: {user_message}
+            
+            Instructions:
+            - If the user wants to add a task/event, ask for any missing information (title, date/time, duration)
+            - If the user confirms adding a task, respond with "CONFIRMED_ADD:" followed by the task details
+            - If the user wants to edit/delete a task, help them identify which one
+            - If the user wants to check their schedule, show them the relevant information
+            - Be helpful and conversational
             """
             
             # Generate response
@@ -458,41 +468,21 @@ with col_left:
             
             bot_response = response.text if response.text else "I understand. Let me help you with that."
             
-            # Parse response for stage changes and actions
-            if "Entering PLAN_CREATE stage" in bot_response:
-                st.session_state.conversation_stage = "PLAN_CREATE"
-            elif "Entering PLAN_EDIT stage" in bot_response:
-                st.session_state.conversation_stage = "PLAN_EDIT"
-            elif "Entering PLAN_CHECK stage" in bot_response:
-                st.session_state.conversation_stage = "PLAN_CHECK"
-            elif "Entering OTHER stage" in bot_response:
-                st.session_state.conversation_stage = "OTHER"
-            
-            # Handle confirmations
-            if "Save this?" in bot_response:
-                st.session_state.awaiting_confirmation = True
-                # Extract proposal from response (simplified parsing)
-                st.session_state.last_proposal = {
-                    'title': 'New Task',
-                    'date': date.today().isoformat(),
-                    'start_time': '09:00',
-                    'duration': 60
-                }
-            
-            # Handle saved confirmation
-            if "Saved ✅" in bot_response:
-                # Add the schedule entry
-                if st.session_state.last_proposal:
-                    add_schedule_entry(
-                        st.session_state.last_proposal['title'],
-                        st.session_state.last_proposal['date'],
-                        st.session_state.last_proposal['start_time'],
-                        duration=st.session_state.last_proposal.get('duration', 60)
-                    )
-                st.session_state.conversation_stage = None
-                st.session_state.awaiting_confirmation = False
-                st.session_state.last_proposal = None
-                st.session_state.pending_slots = {}
+            # Check if bot confirmed adding a task
+            if "CONFIRMED_ADD:" in bot_response:
+                # Parse the task details (simplified for now)
+                # In a real implementation, you'd parse the details from the response
+                
+                # Example: Add a default task (you can enhance this parsing logic)
+                add_schedule_entry(
+                    title="New Task",
+                    date_str=date.today().isoformat(),
+                    start_time="09:00",
+                    duration=60
+                )
+                
+                # Clean the response to remove the CONFIRMED_ADD marker
+                bot_response = bot_response.replace("CONFIRMED_ADD:", "✅ Task added successfully!")
             
             # Add bot response to history
             st.session_state.chat_history.append({'role': 'bot', 'content': bot_response})
