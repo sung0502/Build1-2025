@@ -389,29 +389,39 @@ with col_left:
     for col, (label, command) in zip([col1, col2, col3, col4], quick_actions.items()):
         with col:
             if st.button(label, key=f"quick_{label}", use_container_width=True):
-                st.session_state.msg_input = command  # Fill the text area with command
+                st.session_state.pending_message = command  # Store command to process
                 st.rerun()
     
-    # Chat input with clear functionality
-    user_input = st.text_area(
-        "Message TimeBuddy",
-        placeholder="Try: 'Add team meeting tomorrow at 2pm for 1 hour' or 'Show me today's schedule'",
-        height=80,
-        key="msg_input"
-    )
+    # Use form for better input handling
+    with st.form(key="chat_form", clear_on_submit=True):
+        # Check if there's a pending message from quick commands
+        default_text = st.session_state.get('pending_message', '')
+        
+        user_input = st.text_area(
+            "Message TimeBuddy",
+            placeholder="Try: 'Add team meeting tomorrow at 2pm for 1 hour' or 'Show me today's schedule'",
+            height=80,
+            value=default_text,
+            key="msg_input_form"
+        )
+        
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            send_button = st.form_submit_button("📤 Send", use_container_width=True)
+        with col2:
+            pass  # Placeholder for alignment
     
-    col1, col2 = st.columns([1, 5])
-    with col1:
-        # Simple send button without callback to avoid click issues
-        send_button = st.button("📤 Send", use_container_width=True, disabled=not bool(user_input.strip()))
-    with col2:
-        clear_button = st.button("🗑️ Clear Chat", use_container_width=True)
-    
-    if clear_button:
+    # Clear chat button (outside form)
+    if st.button("🗑️ Clear Chat", use_container_width=True):
         st.session_state.chat_history = []
-        st.session_state.conversation_context = {}  # Clear context
-        st.session_state.message_to_process = ""
+        st.session_state.conversation_context = {}
+        if 'pending_message' in st.session_state:
+            del st.session_state.pending_message
         st.rerun()
+    
+    # Clear pending message after it's been displayed
+    if 'pending_message' in st.session_state and default_text:
+        del st.session_state.pending_message
     
     # Process send button click
     if send_button and user_input.strip():
@@ -480,8 +490,6 @@ with col_left:
             error_msg = f"Sorry, I encountered an error: {str(e)}"
             st.session_state.chat_history.append({'role': 'bot', 'content': error_msg})
         
-        # Clear the input field
-        st.session_state.msg_input = ""
         st.rerun()
 
 with col_right:
