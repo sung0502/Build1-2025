@@ -2,6 +2,7 @@
 import os
 import streamlit as st
 from datetime import datetime, timedelta, date, time
+from zoneinfo import ZoneInfo
 import json
 import uuid
 import re
@@ -164,45 +165,46 @@ def load_developer_prompt() -> str:
 
 system_instructions = load_developer_prompt()
 
-# --- Helper Functions -----------------------------------------------------
-def generate_id():
-    """Generate unique ID for schedule entries"""
-    return str(uuid.uuid4())[:8]
-
 # --- Initialize Session State ----------------------------------------------
 if 'schedules' not in st.session_state:
     st.session_state.schedules = []
-    
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
-    
 if 'conversation_stage' not in st.session_state:
     st.session_state.conversation_stage = None
-    
 if 'pending_slots' not in st.session_state:
     st.session_state.pending_slots = {}
-    
 if 'message_input' not in st.session_state:
     st.session_state.message_input = ""
-    
 if 'clear_input' not in st.session_state:
     st.session_state.clear_input = False
-    
 if 'message_to_process' not in st.session_state:
     st.session_state.message_to_process = ""
-    
 if 'last_proposal' not in st.session_state:
     st.session_state.last_proposal = None
+if 'tz_name' not in st.session_state:
+    st.session_state.tz_name = "America/Phoenix"  # default TZ
 
-# --- Helper Functions -----------------------------------------------------
+# --- Helper Functions ------------------------------------------------------
 def generate_id():
     """Generate unique ID for schedule entries"""
     return str(uuid.uuid4())[:8]
+
+def get_tz() -> ZoneInfo:
+    """Return the currently selected ZoneInfo timezone."""
+    return ZoneInfo(st.session_state.get("tz_name", "America/Phoenix"))
+
+def now_local() -> datetime:
+    """Timezone-aware 'now' based on user’s selected timezone."""
+    return datetime.now(get_tz())
+
+def today_local() -> date:
+    """Today's date in the selected timezone."""
+    return now_local().date()
 
 def parse_time_str(time_str):
     """Parse time string to datetime.time object"""
     try:
-        # Handle various formats: "2pm", "14:00", "2:30 PM"
         time_str = time_str.strip().upper()
         if ":" in time_str:
             if "AM" in time_str or "PM" in time_str:
@@ -212,7 +214,6 @@ def parse_time_str(time_str):
         elif "AM" in time_str or "PM" in time_str:
             return datetime.strptime(time_str, "%I%p").time()
         else:
-            # Assume 24-hour format
             return datetime.strptime(time_str + ":00", "%H:%M").time()
     except:
         return None
@@ -240,19 +241,19 @@ def add_schedule_entry(title, date_str, start_time, end_time=None, duration=None
         'duration': duration,
         'type': get_event_type(title),
         'completed': False,
-        'created_at': datetime.now().isoformat()
+        'created_at': now_local().isoformat()
     }
     st.session_state.schedules.append(entry)
     return entry
 
 def get_today_schedules():
-    """Get schedules for today"""
-    today = date.today().isoformat()
-    return [s for s in st.session_state.schedules if s['date'] == today]
+    """Get schedules for today (user-selected timezone)."""
+    today_iso = today_local().isoformat()
+    return [s for s in st.session_state.schedules if s['date'] == today_iso]
 
 def get_week_schedules():
-    """Get schedules for current week"""
-    today = date.today()
+    """Get schedules for current week (user-selected timezone)."""
+    today = today_local()
     start_week = today - timedelta(days=today.weekday())
     end_week = start_week + timedelta(days=6)
     
@@ -269,7 +270,7 @@ def parse_task_from_response(response_text, user_message):
     
     task_info = {
         'title': None,
-        'date': date.today().isoformat(),
+        'date': today_local().isoformat(),
         'start_time': None,
         'end_time': None,
         'duration': 60  # default duration
@@ -283,7 +284,7 @@ def parse_task_from_response(response_text, user_message):
         r'add\s+(.+?)\s+(?:at|on|tomorrow|today)',
         r'schedule\s+(.+?)\s+(?:at|for|tomorrow|today)',
         r'create\s+(.+?)\s+(?:at|for|tomorrow|today)',
-        r'"([^"]+)"',  # quoted text
+        r'"([^"]+)"',
         r'task:\s*(.+?)(?:\s+at|\s+on|$)',
     ]
     
@@ -293,7 +294,6 @@ def parse_task_from_response(response_text, user_message):
             task_info['title'] = match.group(1).strip().title()
             break
     
-    # If no title found, try to extract from response
     if not task_info['title']:
         if "meeting" in user_lower:
             task_info['title'] = "Meeting"
@@ -308,21 +308,19 @@ def parse_task_from_response(response_text, user_message):
     
     # Parse date
     if "tomorrow" in user_lower:
-        task_info['date'] = (date.today() + timedelta(days=1)).isoformat()
+        task_info['date'] = (today_local() + timedelta(days=1)).isoformat()
     elif "today" in user_lower:
-        task_info['date'] = date.today().isoformat()
+        task_info['date'] = today_local().isoformat()
     else:
-        # Try to find day of week
         days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        for day in days:
-            if day in user_lower:
-                # Calculate next occurrence of this day
-                today = date.today()
-                target_day = days.index(day)
-                days_ahead = target_day - today.weekday()
+        for dayname in days:
+            if dayname in user_lower:
+                today_d = today_local()
+                target_day = days.index(dayname)
+                days_ahead = target_day - today_d.weekday()
                 if days_ahead <= 0:
                     days_ahead += 7
-                task_info['date'] = (today + timedelta(days=days_ahead)).isoformat()
+                task_info['date'] = (today_d + timedelta(days=days_ahead)).isoformat()
                 break
     
     # Parse time
@@ -438,7 +436,7 @@ generation_cfg = types.GenerateContentConfig(
     max_output_tokens=2048,
 )
 
-# --- Sidebar Navigation --------------------------------------------------
+# --- Sidebar Navigation ----------------------------------------------------
 with st.sidebar:
     st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
     st.title("⏱️ TimeBuddy")
@@ -486,13 +484,50 @@ with st.sidebar:
         **Powered by:** Gemini AI
         """)
 
+    # --- Time & Timezone block ---
+    st.divider()
+    st.markdown("### 🕒 Time & Timezone")
+
+    tz_options = [
+        "UTC",
+        "America/Phoenix", "America/Los_Angeles", "America/Denver",
+        "America/Chicago", "America/New_York",
+        "Europe/London", "Europe/Paris", "Europe/Berlin",
+        "Asia/Seoul", "Asia/Tokyo", "Asia/Shanghai", "Asia/Kolkata",
+        "Australia/Sydney",
+    ]
+    initial_tz = st.session_state.tz_name
+    if initial_tz not in tz_options:
+        tz_options = [initial_tz] + tz_options
+
+    selected_tz = st.selectbox("Timezone", tz_options, index=tz_options.index(initial_tz))
+    st.session_state.tz_name = selected_tz
+
+    current_time_container = st.empty()
+    current_time_container.metric(
+        label="Current time",
+        value=now_local().strftime("%Y-%m-%d %H:%M"),
+        delta=None
+    )
+
+    with st.expander("Add a custom timezone (IANA)"):
+        custom = st.text_input("e.g., Europe/Amsterdam, America/Toronto")
+        if custom:
+            try:
+                _ = ZoneInfo(custom)
+                st.session_state.tz_name = custom
+                st.success(f"Timezone set to {custom}")
+                st.rerun()
+            except Exception:
+                st.error("Invalid IANA timezone. Try something like Europe/Paris or Asia/Singapore.")
 
 # --- Main Content Area ---------------------------------------------------
 # Header
-st.markdown("""
+st.markdown(f"""
 <div class="main-header">
     <h1 style="margin: 0; color: white;">TimeBuddy Assistant</h1>
     <p style="margin: 0; opacity: 0.9;">Let's manage your schedule together!</p>
+    <p style="margin: 0.25rem 0 0 0; opacity: 0.85;">Timezone: <b>{st.session_state.tz_name}</b> • Local time: <b>{now_local().strftime('%H:%M')}</b></p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -503,7 +538,6 @@ with col_left:
     # Chat Interface
     st.markdown("### 💬 Chat Assistant")
     
-    # Display chat history
     chat_container = st.container(height=400)
     with chat_container:
         # Show initial greeting if no history
@@ -512,9 +546,9 @@ with col_left:
             <div class="bot-message">
             👋 Hi! I'm TimeBuddy, your personal time assistant. I can help you:
             
-            • **Schedule tasks**: "Add team meeting tomorrow at 2pm for 1 hour"
-            • **Edit plans**: "Move my workout to 7am"
-            • **Check agenda**: "Show me today's schedule"
+            • **Schedule tasks**: "Add team meeting tomorrow at 2pm for 1 hour"<br>
+            • **Edit plans**: "Move my workout to 7am"<br>
+            • **Check agenda**: "Show me today's schedule"<br>
             • **Track progress**: Mark tasks as complete
             
             What would you like to do?
@@ -539,16 +573,14 @@ with col_left:
         "View week": "Show me this week's schedule"
     }
     
-    # Quick action buttons that fill the text area
     for col, (label, command) in zip([col1, col2, col3, col4], quick_actions.items()):
         with col:
             if st.button(label, key=f"quick_{label}", use_container_width=True):
-                st.session_state.pending_message = command  # Store command to process
+                st.session_state.pending_message = command
                 st.rerun()
     
-    # Use form for better input handling
+    # Input form
     with st.form(key="chat_form", clear_on_submit=True):
-        # Check if there's a pending message from quick commands
         default_text = st.session_state.get('pending_message', '')
         
         user_input = st.text_area(
@@ -563,7 +595,7 @@ with col_left:
         with col1:
             send_button = st.form_submit_button("📤 Send", use_container_width=True)
         with col2:
-            pass  # Placeholder for alignment
+            pass
     
     # Clear chat button (outside form)
     if st.button("🗑️ Clear Chat", use_container_width=True):
@@ -573,32 +605,31 @@ with col_left:
             del st.session_state.pending_message
         st.rerun()
     
-    # Clear pending message after it's been displayed
     if 'pending_message' in st.session_state and default_text:
         del st.session_state.pending_message
     
-    # Process send button click
+    # Process send
     if send_button and user_input.strip():
-        # Add user message to history
         st.session_state.chat_history.append({'role': 'user', 'content': user_input})
         
         try:
             # Build conversation history for context
             conversation_text = ""
-            for msg in st.session_state.chat_history[-5:]:  # Last 5 messages for context
+            for msg in st.session_state.chat_history[-5:]:
                 role = "User" if msg['role'] == 'user' else "Assistant"
                 conversation_text += f"{role}: {msg['content']}\n\n"
             
-            # Prepare enhanced context with TimeBuddy identity
+            # Prepare enhanced context with TimeBuddy identity and timezone-aware time
             context = f"""
             {system_instructions}
             
             Current schedules in the system:
             {get_schedules_summary()}
             
-            Today's date: {date.today().isoformat()}
-            Current day: {date.today().strftime("%A")}
-            Current time: {datetime.now().strftime("%H:%M")}
+            Today's date: {today_local().isoformat()}
+            Current day: {today_local().strftime("%A")}
+            Current time: {now_local().strftime("%H:%M")}
+            User timezone: {st.session_state.tz_name}
             
             Recent conversation:
             {conversation_text}
@@ -628,20 +659,17 @@ with col_left:
             
             # Process different task actions
             if "TASK_ADD:" in bot_response:
-                # Extract JSON after TASK_ADD:
-                import re
                 match = re.search(r'TASK_ADD:\s*(\{[^}]+\})', bot_response)
                 if match:
                     try:
                         task_data = json.loads(match.group(1))
                         add_schedule_entry(
                             title=task_data.get('title', 'New Task'),
-                            date_str=task_data.get('date', date.today().isoformat()),
+                            date_str=task_data.get('date', today_local().isoformat()),
                             start_time=task_data.get('start_time', '09:00'),
                             duration=task_data.get('duration', 60)
                         )
                     except:
-                        # Fallback to parsing from user message
                         task_info = parse_task_from_response(bot_response, user_input)
                         add_schedule_entry(
                             title=task_info['title'],
@@ -649,12 +677,9 @@ with col_left:
                             start_time=task_info['start_time'],
                             duration=task_info['duration']
                         )
-                
-                # Clean the response
                 bot_response = re.sub(r'TASK_ADD:\s*\{[^}]+\}', '', bot_response)
             
             elif "TASK_EDIT:" in bot_response:
-                # Handle task editing
                 match = re.search(r'TASK_EDIT:\s*(\{[^}]+\})', bot_response)
                 if match:
                     try:
@@ -665,23 +690,19 @@ with col_left:
                 bot_response = re.sub(r'TASK_EDIT:\s*\{[^}]+\}', '', bot_response)
             
             elif "TASK_DELETE:" in bot_response:
-                # Handle task deletion
                 match = re.search(r'TASK_DELETE:\s*([a-zA-Z0-9-]+)', bot_response)
                 if match:
                     delete_schedule_entry(match.group(1))
                 bot_response = re.sub(r'TASK_DELETE:\s*[a-zA-Z0-9-]+', '', bot_response)
             
             elif "TASK_COMPLETE:" in bot_response:
-                # Handle task completion
                 match = re.search(r'TASK_COMPLETE:\s*([a-zA-Z0-9-]+)', bot_response)
                 if match:
                     mark_task_complete(match.group(1))
                 bot_response = re.sub(r'TASK_COMPLETE:\s*[a-zA-Z0-9-]+', '', bot_response)
             
-            # Check for simple add patterns in user message if no explicit action
             elif any(keyword in user_input.lower() for keyword in ['add', 'schedule', 'create', 'plan', 'book']):
                 if "Saved ✅" in bot_response:
-                    # Bot confirmed saving, parse and add task
                     task_info = parse_task_from_response(bot_response, user_input)
                     add_schedule_entry(
                         title=task_info['title'],
@@ -690,7 +711,6 @@ with col_left:
                         duration=task_info['duration']
                     )
             
-            # Add bot response to history
             st.session_state.chat_history.append({'role': 'bot', 'content': bot_response.strip()})
             
         except Exception as e:
@@ -711,18 +731,15 @@ with col_right:
         
         if today_tasks:
             for task in sorted(today_tasks, key=lambda x: x['start_time']):
-                # Create task card
                 status_icon = "✅" if task['completed'] else "⏰"
                 card_class = "task-completed" if task['completed'] else "task-card"
                 
                 with st.container():
                     col1, col2 = st.columns([1, 4])
                     with col1:
-                        # Toggle completion
                         if st.checkbox("", value=task['completed'], key=f"task_{task['id']}"):
                             task['completed'] = not task['completed']
                             st.rerun()
-                    
                     with col2:
                         st.markdown(format_schedule_display(task))
         else:
@@ -735,7 +752,6 @@ with col_right:
         week_tasks = get_week_schedules()
         
         if week_tasks:
-            # Group by date
             tasks_by_date = {}
             for task in week_tasks:
                 task_date = task['date']
@@ -743,7 +759,6 @@ with col_right:
                     tasks_by_date[task_date] = []
                 tasks_by_date[task_date].append(task)
             
-            # Display by date
             for task_date in sorted(tasks_by_date.keys()):
                 date_obj = datetime.fromisoformat(task_date).date()
                 date_label = date_obj.strftime("%a, %b %d")
@@ -758,12 +773,12 @@ with col_right:
         # Calendar View
         st.markdown("### Weekly Calendar")
         
-        # Get current week dates
-        today = date.today()
+        # Get current week dates (timezone-aware)
+        today = today_local()
         start_week = today - timedelta(days=today.weekday())
         week_dates = [start_week + timedelta(days=i) for i in range(7)]
         
-        # Create calendar grid header
+        # Header
         cols = st.columns(7)
         for i, week_date in enumerate(week_dates):
             with cols[i]:
@@ -803,11 +818,9 @@ with col_right:
         # Analytics View
         st.markdown("### Time Analytics")
         
-        # Calculate stats
         total_scheduled = len(st.session_state.schedules)
         completed = len([s for s in st.session_state.schedules if s['completed']])
         
-        # Display metrics
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Total Scheduled", total_scheduled)
