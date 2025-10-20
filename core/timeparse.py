@@ -133,34 +133,53 @@ def parse_duration_minutes(text: str) -> Optional[int]:
 def quick_task_title_guess(text: str) -> str:
     """
     Extract likely task title from user text.
-    
+
     Examples:
         "add team meeting tomorrow" -> "Team Meeting"
         "schedule workout at 7am" -> "Workout"
     """
     text = text.lower()
-    
+
     # Remove common trigger words
-    for trigger in ['add', 'schedule', 'create', 'plan', 'book', 'set up', 'set']:
+    for trigger in ['add', 'schedule', 'create', 'plan', 'book', 'set up', 'set', 'remind me to', 'reminder']:
         text = text.replace(trigger, '')
-    
-    # Remove time expressions
-    text = re.sub(r'\bat\s+\d+', '', text)
-    text = re.sub(r'\d+\s*(?:am|pm)', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\d+:\d+', '', text)
-    
+
+    # Remove complete time expressions (do this before removing individual parts)
+    # "at 7am", "at 7:30pm", "at 14:00", etc.
+    text = re.sub(r'\bat\s+\d{1,2}:\d{2}\s*(?:am|pm)?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bat\s+\d{1,2}\s*(?:am|pm)', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bat\s+\d{1,2}(?:\s|$)', ' ', text)  # "at 7 " or "at 7" at end
+
+    # Remove standalone time expressions
+    text = re.sub(r'\b\d{1,2}:\d{2}\s*(?:am|pm)?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b\d{1,2}\s*(?:am|pm)', '', text, flags=re.IGNORECASE)
+
+    # Remove duration expressions with "for"
+    text = re.sub(r'\bfor\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?|h)\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bfor\s+\d+\s*(?:minutes?|mins?|m)\b', '', text, flags=re.IGNORECASE)
+
+    # Remove standalone duration expressions
+    text = re.sub(r'\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|h)\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b\d+\s*(?:minutes?|mins?|m)\b', '', text, flags=re.IGNORECASE)
+
     # Remove date expressions
-    for word in ['tomorrow', 'today', 'tonight', 'morning', 'afternoon', 'evening']:
+    for word in ['tomorrow', 'today', 'tonight', 'morning', 'afternoon', 'evening', 'next week', 'next monday', 'next tuesday', 'next wednesday', 'next thursday', 'next friday', 'next saturday', 'next sunday']:
         text = text.replace(word, '')
-    
-    # Remove duration expressions
-    text = re.sub(r'\d+\s*(?:hours?|hrs?|minutes?|mins?)', '', text, flags=re.IGNORECASE)
-    
-    # Clean up
-    text = text.strip()
+
+    # Remove day names
+    for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']:
+        text = re.sub(r'\b' + day + r'\b', '', text, flags=re.IGNORECASE)
+
+    # Remove leftover connector words
+    for connector in [' for ', ' at ', ' on ', ' from ', ' to ', ' by ', ' in ']:
+        text = text.replace(connector, ' ')
+
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+
     if not text:
         return "New Task"
-    
+
     # Capitalize first letter of each word
     return ' '.join(word.capitalize() for word in text.split())
 
