@@ -66,14 +66,17 @@ This is a meta/help request. Provide a brief, friendly response.
 Then redirect the user back to scheduling tasks.
 Keep it under 3 sentences.
 """
-        
-        response = self.llm.generate(
-            system_instruction=self.identity,
-            prompt=prompt,
-            temperature=0.6,
-            max_tokens=256
-        )
-        
+
+        try:
+            response = self.llm.generate(
+                system_instruction=self.identity,
+                prompt=prompt,
+                temperature=0.6,
+                max_tokens=256
+            )
+        except Exception as e:
+            response = ""
+
         if not response:
             response = "I'm here to help you manage your schedule! What would you like to do?"
         

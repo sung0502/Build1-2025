@@ -136,17 +136,21 @@ User message: "{text}"
 Respond with ONLY a JSON object like:
 {{"stage": "PLAN_CREATE", "confidence": 0.9}}
 """
-        
-        result = self.llm.classify_json(
-            system_instruction=self.identity,
-            prompt=prompt,
-            schema_hint='{"stage": "PLAN_CREATE|PLAN_EDIT|PLAN_CHECK|OTHER", "confidence": 0.0-1.0}'
-        )
-        
-        if result and 'stage' in result:
-            return RouteDecision(
-                stage=result['stage'],
-                confidence=result.get('confidence', 0.7)
+
+        try:
+            result = self.llm.classify_json(
+                system_instruction=self.identity,
+                prompt=prompt,
+                schema_hint='{"stage": "PLAN_CREATE|PLAN_EDIT|PLAN_CHECK|OTHER", "confidence": 0.0-1.0}'
             )
-        
+
+            if result and 'stage' in result:
+                return RouteDecision(
+                    stage=result['stage'],
+                    confidence=result.get('confidence', 0.7)
+                )
+        except Exception as e:
+            # If LLM fails, return None to fall back to keyword routing
+            pass
+
         return None
