@@ -177,9 +177,13 @@ def init_brain():
     edit_bot = EditBot(llm)
     check_bot = CheckBot(llm)
     other_bot = OtherBot(llm)
-    return router, create_bot, edit_bot, check_bot, other_bot
+    return llm, router, create_bot, edit_bot, check_bot, other_bot
 
-router, create_bot, edit_bot, check_bot, other_bot = init_brain()
+llm, router, create_bot, edit_bot, check_bot, other_bot = init_brain()
+
+# Store LLM in session state for smart confirmation handling
+if 'llm' not in st.session_state:
+    st.session_state.llm = llm
 
 # Sidebar
 with st.sidebar:
