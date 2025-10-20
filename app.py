@@ -92,128 +92,7 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
-    /* Layout container for side-by-side design */
-    .layout-container {
-        display: flex;
-        gap: 1rem;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-    }
-
-    /* Main content area - left side */
-    .main-content-area {
-        flex: 1;
-        min-width: 0;
-        padding-right: 1rem;
-    }
-
-    /* Fixed chat panel - right side */
-    .chat-sidebar-panel {
-        position: fixed;
-        right: 0;
-        top: 0;
-        bottom: 0;
-        width: 35%;
-        background: white;
-        border-left: 2px solid #e2e8f0;
-        box-shadow: -4px 0 12px rgba(0, 0, 0, 0.1);
-        z-index: 999;
-        display: flex;
-        flex-direction: column;
-        padding: 1rem;
-        overflow: hidden;
-    }
-
-    /* Adjust main container to account for right chat panel */
-    .main .block-container {
-        max-width: 65% !important;
-        padding-right: 2rem;
-    }
-
-    /* Chat history container - takes up most of the panel */
-    .chat-history-container {
-        flex: 1;
-        overflow-y: auto;
-        margin-bottom: 0.5rem;
-        padding: 0.5rem;
-        background: #f8fafc;
-        border-radius: 8px;
-    }
-
-    /* Chat input area - fixed at bottom of panel */
-    .chat-input-area {
-        flex-shrink: 0;
-        padding-top: 0.5rem;
-        border-top: 1px solid #e2e8f0;
-    }
-
-    /* History toggle button */
-    .history-toggle {
-        cursor: pointer;
-        padding: 0.5rem;
-        background: #f1f5f9;
-        border-radius: 8px;
-        margin-bottom: 0.5rem;
-        text-align: center;
-        transition: background 0.2s ease;
-    }
-
-    .history-toggle:hover {
-        background: #e2e8f0;
-    }
-
-    /* Message styling for sidebar */
-    .user-message {
-        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-        color: white;
-        padding: 0.75rem 1rem;
-        border-radius: 12px;
-        margin: 0.5rem 0;
-        margin-left: 15%;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        max-width: 80%;
-    }
-
-    .bot-message {
-        background: #f1f5f9;
-        color: #0f172a;
-        padding: 0.75rem 1rem;
-        border-radius: 12px;
-        margin: 0.5rem 0;
-        margin-right: 15%;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        max-width: 80%;
-    }
-
     /* Mobile responsive styles */
-    @media (max-width: 1024px) {
-        /* On tablets and smaller, move chat to bottom */
-        .chat-sidebar-panel {
-            position: fixed;
-            right: 0;
-            left: 0;
-            top: auto;
-            bottom: 0;
-            width: 100% !important;
-            height: 350px;
-            border-left: none;
-            border-top: 2px solid #e2e8f0;
-            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .main .block-container {
-            max-width: 100% !important;
-            padding-bottom: 370px !important;
-        }
-
-        .main-content-area {
-            padding-right: 0;
-        }
-    }
-
     @media (max-width: 768px) {
         .user-message {
             margin-left: 10%;
@@ -237,14 +116,6 @@ st.markdown("""
         [data-testid="column"] {
             padding: 0.25rem !important;
             font-size: 0.85rem;
-        }
-
-        .chat-sidebar-panel {
-            height: 300px;
-        }
-
-        .main .block-container {
-            padding-bottom: 320px !important;
         }
     }
 
@@ -276,13 +147,79 @@ st.markdown("""
             padding: 0.25rem 0.5rem;
             font-size: 0.75rem;
         }
+    }
 
-        .chat-sidebar-panel {
-            height: 250px;
-        }
+    /* Fixed chat container at bottom */
+    .fixed-chat-container {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        background: white !important;
+        border-top: 2px solid #e2e8f0 !important;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1) !important;
+        z-index: 999999 !important;
+        padding: 1rem !important;
+        margin: 0 !important;
+    }
 
-        .main .block-container {
-            padding-bottom: 270px !important;
+    /* Ensure fixed chat works with Streamlit's structure */
+    [data-testid="stVerticalBlock"] > div:has(.fixed-chat-container) {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        z-index: 999999 !important;
+    }
+
+    /* Chat history container */
+    .chat-history-container {
+        max-height: 400px;
+        overflow-y: auto;
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        background: #f8fafc;
+        border-radius: 8px;
+    }
+
+    /* History toggle button */
+    .history-toggle {
+        cursor: pointer;
+        padding: 0.5rem;
+        background: #f1f5f9;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+        text-align: center;
+        transition: background 0.2s ease;
+    }
+
+    .history-toggle:hover {
+        background: #e2e8f0;
+    }
+
+    /* Add padding to main content to prevent overlap with fixed chat */
+    .main-content-area {
+        padding-bottom: 300px !important;
+        margin-bottom: 2rem !important;
+    }
+
+    /* Ensure main content scrolls properly */
+    .main .block-container {
+        padding-bottom: 350px !important;
+    }
+
+    /* Adjust for sidebar - chat should respect sidebar */
+    section[data-testid="stSidebar"] ~ .main .fixed-chat-container {
+        left: 0 !important;
+        width: 100% !important;
+    }
+
+    @media (min-width: 769px) {
+        section[data-testid="stSidebar"]:not([aria-expanded="false"]) ~ .main .fixed-chat-container {
+            left: 21rem !important;
+            width: calc(100% - 21rem) !important;
         }
     }
 </style>
@@ -393,7 +330,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Main content area - Tasks, Calendar, Analytics (left side)
+# Main content area - Tasks, Calendar, Analytics (full width)
 st.markdown('<div class="main-content-area">', unsafe_allow_html=True)
 
 tabs = st.tabs(["📋 Tasks", "📅 Calendar", "📊 Analytics"])
@@ -484,17 +421,32 @@ with tabs[2]:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Chat sidebar panel (right side)
-st.markdown('<div class="chat-sidebar-panel">', unsafe_allow_html=True)
+# Fixed chat section at bottom
+st.markdown("""
+<style>
+/* Additional override to ensure fixed positioning works */
+div[data-testid="stVerticalBlock"]:has(div.fixed-chat-container) {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    z-index: 999999 !important;
+}
+</style>
+<div class="fixed-chat-container">
+""", unsafe_allow_html=True)
 
 # History toggle button
-if st.button(
-    f"{'▲ Hide History' if st.session_state.show_full_history else '▼ Show History'}",
-    key="toggle_history",
-    use_container_width=True
-):
-    st.session_state.show_full_history = not st.session_state.show_full_history
-    st.rerun()
+col_toggle, col_spacer = st.columns([3, 7])
+with col_toggle:
+    if st.button(
+        f"{'▲ Hide History' if st.session_state.show_full_history else '▼ Show History'}",
+        key="toggle_history",
+        use_container_width=True
+    ):
+        st.session_state.show_full_history = not st.session_state.show_full_history
+        st.rerun()
 
 # Display chat history
 if st.session_state.chat_history:
@@ -540,9 +492,7 @@ else:
     """, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Chat input area
-st.markdown('<div class="chat-input-area">', unsafe_allow_html=True)
-
+# Chat input form
 with st.form(key="chat_form", clear_on_submit=True):
     default_text = st.session_state.get('pending_message', '')
 
@@ -618,5 +568,11 @@ if send_button and user_input.strip():
                 push_bot(st.session_state, error_msg)
                 st.rerun()
 
-st.markdown('</div>', unsafe_allow_html=True)  # Close chat-input-area
-st.markdown('</div>', unsafe_allow_html=True)  # Close chat-sidebar-panel
+st.markdown('</div>', unsafe_allow_html=True)
+
+st.divider()
+st.markdown("""
+<div style="text-align: center; color: #94a3b8; font-size: 0.875rem;">
+    TimeBuddy v2.0 (Modular) | Powered by Gemini AI | Built with Streamlit
+</div>
+""", unsafe_allow_html=True)
