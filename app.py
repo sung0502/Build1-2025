@@ -148,11 +148,63 @@ st.markdown("""
             font-size: 0.75rem;
         }
     }
+
+    /* Fixed chat container at bottom */
+    .fixed-chat-container {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-top: 2px solid #e2e8f0;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        padding: 1rem;
+    }
+
+    /* Chat history container */
+    .chat-history-container {
+        max-height: 400px;
+        overflow-y: auto;
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        background: #f8fafc;
+        border-radius: 8px;
+    }
+
+    /* History toggle button */
+    .history-toggle {
+        cursor: pointer;
+        padding: 0.5rem;
+        background: #f1f5f9;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+        text-align: center;
+        transition: background 0.2s ease;
+    }
+
+    .history-toggle:hover {
+        background: #e2e8f0;
+    }
+
+    /* Add padding to main content to prevent overlap with fixed chat */
+    .main-content-area {
+        padding-bottom: 250px;
+    }
+
+    /* Adjust for sidebar */
+    [data-testid="stSidebar"] ~ .main .block-container {
+        max-width: 100%;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Initialize session state
 ensure_session_defaults(st.session_state)
+
+# Initialize chat history toggle state
+if 'show_full_history' not in st.session_state:
+    st.session_state.show_full_history = False
 
 # Load API key
 API_KEY = st.secrets.get("GEMINI_API_KEY", "")
@@ -252,218 +304,232 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Main layout
-col_left, col_right = st.columns([2, 1])
+# Main content area - Tasks, Calendar, Analytics (full width)
+st.markdown('<div class="main-content-area">', unsafe_allow_html=True)
 
-with col_left:
-    st.markdown("### 💬 Chat Assistant")
-    
-    # Chat container - responsive height
-    chat_container = st.container(height=500)
-    with chat_container:
-        if not st.session_state.chat_history:
-            st.markdown("""
-            <div class="bot-message">
-            👋 Hi! I'm TimeBuddy, your personal time assistant. I can help you:
-            
-            • **Schedule tasks**: "Add team meeting tomorrow at 2pm"<br>
-            • **Edit plans**: "Move my workout to 7am"<br>
-            • **Check agenda**: "Show me today's schedule"
-            
-            What would you like to do?
-            </div>
-            """, unsafe_allow_html=True)
-        
-        for msg in st.session_state.chat_history:
+tabs = st.tabs(["📋 Tasks", "📅 Calendar", "📊 Analytics"])
+
+with tabs[0]:
+    st.markdown("### Today's Tasks")
+    today_tasks = get_today_schedules(st.session_state)
+
+    if today_tasks:
+        for task in sorted(today_tasks, key=lambda x: x['start_time']):
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                checked = st.checkbox("", value=task['completed'], key=f"cb_{task['id']}")
+                if checked != task['completed']:
+                    task['completed'] = checked
+                    st.rerun()
+            with col2:
+                st.markdown(format_schedule_display(task))
+    else:
+        st.info("No tasks for today. Add one in the chat!")
+
+    st.divider()
+    st.markdown("### This Week")
+    week_tasks = get_week_schedules(st.session_state)
+
+    if week_tasks:
+        by_date = {}
+        for t in week_tasks:
+            by_date.setdefault(t['date'], []).append(t)
+
+        for date_str in sorted(by_date.keys()):
+            date_obj = datetime.fromisoformat(date_str).date()
+            with st.expander(f"{date_obj.strftime('%a, %b %d')} ({len(by_date[date_str])})"):
+                for t in sorted(by_date[date_str], key=lambda x: x['start_time']):
+                    st.markdown(format_schedule_display(t))
+    else:
+        st.info("No tasks this week.")
+
+with tabs[1]:
+    st.markdown("### Weekly Calendar")
+    today = today_local(st.session_state)
+    start_week = today - timedelta(days=today.weekday())
+    week_dates = [start_week + timedelta(days=i) for i in range(7)]
+
+    cols = st.columns(7)
+    for i, d in enumerate(week_dates):
+        with cols[i]:
+            is_today = d == today
+            st.markdown(f"**{d.strftime('%a')}**  \n{'📍' if is_today else ''}{d.strftime('%d')}")
+
+    st.divider()
+
+    cols = st.columns(7)
+    for i, d in enumerate(week_dates):
+        with cols[i]:
+            day_tasks = [s for s in st.session_state.schedules if s['date'] == d.isoformat()]
+            if day_tasks:
+                for s in sorted(day_tasks, key=lambda x: x['start_time']):
+                    emoji = {'work': '🔵', 'meeting': '🟡', 'personal': '🟢', 'break': '⚪'}.get(s['type'], '⚫')
+                    st.markdown(f"{emoji} {s['start_time'][:5]}")
+                    st.caption(s['title'][:15])
+            else:
+                st.markdown("—")
+
+with tabs[2]:
+    st.markdown("### Time Analytics")
+    total = len(st.session_state.schedules)
+    completed = sum(1 for s in st.session_state.schedules if s['completed'])
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total Tasks", total)
+        st.metric("Completion Rate", f"{(completed/total*100 if total else 0):.0f}%")
+    with col2:
+        st.metric("Completed", completed)
+        st.metric("Pending", total - completed)
+
+    st.divider()
+    st.markdown("### Task Breakdown")
+    types = {}
+    for s in st.session_state.schedules:
+        types[s['type']] = types.get(s['type'], 0) + 1
+
+    if types:
+        for t, c in types.items():
+            emoji = {'work': '💼', 'meeting': '🤝', 'personal': '🏃', 'break': '☕'}.get(t, '📅')
+            st.markdown(f"{emoji} **{t.capitalize()}**: {c}")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Fixed chat section at bottom
+st.markdown('<div class="fixed-chat-container">', unsafe_allow_html=True)
+
+# History toggle button
+col_toggle, col_spacer = st.columns([3, 7])
+with col_toggle:
+    if st.button(
+        f"{'▲ Hide History' if st.session_state.show_full_history else '▼ Show History'}",
+        key="toggle_history",
+        use_container_width=True
+    ):
+        st.session_state.show_full_history = not st.session_state.show_full_history
+        st.rerun()
+
+# Display chat history
+if st.session_state.chat_history:
+    # Determine how many messages to show
+    if st.session_state.show_full_history:
+        messages_to_show = st.session_state.chat_history
+    else:
+        # Show only last 2 exchanges (4 messages: 2 user + 2 bot)
+        messages_to_show = st.session_state.chat_history[-4:] if len(st.session_state.chat_history) > 4 else st.session_state.chat_history
+
+    # Chat history container
+    st.markdown('<div class="chat-history-container">', unsafe_allow_html=True)
+
+    if not messages_to_show and not st.session_state.show_full_history:
+        st.markdown("""
+        <div class="bot-message">
+        👋 Hi! I'm TimeBuddy. I can help you schedule tasks, edit plans, and check your agenda.
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        for msg in messages_to_show:
             if msg['role'] == 'user':
                 st.markdown(f'<div class="user-message">{msg["content"]}</div>', unsafe_allow_html=True)
             else:
                 # Convert markdown **text** to HTML <strong>text</strong> for proper rendering
                 content = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', msg["content"])
                 st.markdown(f'<div class="bot-message">{content}</div>', unsafe_allow_html=True)
-    
-    # Quick commands
-    st.markdown("**Quick Commands:**")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    quick_actions = {
-        "Add task": "Schedule a new task for me",
-        "Show today": "What's on my schedule today?",
-        "Edit task": "I need to change a task",
-        "View week": "Show me this week's schedule"
-    }
-    
-    for col, (label, command) in zip([col1, col2, col3, col4], quick_actions.items()):
-        with col:
-            if st.button(label, key=f"quick_{label}", use_container_width=True):
-                st.session_state.pending_message = command
-                st.rerun()
-    
-    # Input form
-    with st.form(key="chat_form", clear_on_submit=True):
-        default_text = st.session_state.get('pending_message', '')
-        
-        user_input = st.text_area(
-            "Message TimeBuddy",
-            placeholder="Try: 'Add team meeting tomorrow at 2pm' or 'Show today'",
-            height=80,
-            value=default_text,
-            key="msg_input"
-        )
-        
-        send_button = st.form_submit_button("📤 Send", use_container_width=True)
-    
-    if st.button("🗑️ Clear Chat"):
-        st.session_state.chat_history = []
+
+    st.markdown('</div>', unsafe_allow_html=True)
+else:
+    # Welcome message when no chat history
+    st.markdown('<div class="chat-history-container">', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="bot-message">
+    👋 Hi! I'm TimeBuddy, your personal time assistant. I can help you:
+
+    • <strong>Schedule tasks</strong>: "Add team meeting tomorrow at 2pm"<br>
+    • <strong>Edit plans</strong>: "Move my workout to 7am"<br>
+    • <strong>Check agenda</strong>: "Show me today's schedule"
+
+    What would you like to do?
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Chat input form
+with st.form(key="chat_form", clear_on_submit=True):
+    default_text = st.session_state.get('pending_message', '')
+
+    user_input = st.text_area(
+        "Message TimeBuddy",
+        placeholder="Try: 'Add team meeting tomorrow at 2pm' or 'Show today'",
+        height=65,
+        value=default_text,
+        key="msg_input",
+        label_visibility="collapsed"
+    )
+
+    send_button = st.form_submit_button("💬 Send Message", use_container_width=True)
+
+if 'pending_message' in st.session_state:
+    del st.session_state.pending_message
+
+# Process message
+if send_button and user_input.strip():
+    push_user(st.session_state, user_input)
+
+    # Try confirmation first
+    if try_handle_confirmation(st.session_state, user_input):
         st.rerun()
-    
-    if 'pending_message' in st.session_state:
-        del st.session_state.pending_message
-    
-    # Process message
-    if send_button and user_input.strip():
-        push_user(st.session_state, user_input)
+    else:
+        # Show loading indicator while processing
+        with st.spinner("🤔 Thinking..."):
+            try:
+                # Build bot request
+                bot_request = BotRequest(
+                    user_text=user_input,
+                    now_iso=now_local(st.session_state).isoformat(),
+                    tz_name=st.session_state.tz_name,
+                    schedules_snapshot=schedules_snapshot_sorted(st.session_state),
+                    system_identity=system_identity,
+                    chat_history=st.session_state.chat_history[-5:]
+                )
 
-        # Try confirmation first
-        if try_handle_confirmation(st.session_state, user_input):
-            st.rerun()
-        else:
-            # Show loading indicator while processing
-            with st.spinner("🤔 Thinking..."):
-                try:
-                    # Build bot request
-                    bot_request = BotRequest(
-                        user_text=user_input,
-                        now_iso=now_local(st.session_state).isoformat(),
-                        tz_name=st.session_state.tz_name,
-                        schedules_snapshot=schedules_snapshot_sorted(st.session_state),
-                        system_identity=system_identity,
-                        chat_history=st.session_state.chat_history[-5:]
-                    )
+                # Route to appropriate bot
+                route_decision = router.route(
+                    user_input,
+                    awaiting_confirmation=st.session_state.awaiting_confirmation
+                )
 
-                    # Route to appropriate bot
-                    route_decision = router.route(
-                        user_input,
-                        awaiting_confirmation=st.session_state.awaiting_confirmation
-                    )
+                # Call appropriate bot
+                if route_decision.stage == "PLAN_CREATE":
+                    envelope = create_bot.run(bot_request)
+                elif route_decision.stage == "PLAN_EDIT":
+                    envelope = edit_bot.run(bot_request)
+                elif route_decision.stage == "PLAN_CHECK":
+                    envelope = check_bot.run(bot_request)
+                else:  # OTHER
+                    envelope = other_bot.run(bot_request)
 
-                    # Call appropriate bot
-                    if route_decision.stage == "PLAN_CREATE":
-                        envelope = create_bot.run(bot_request)
-                    elif route_decision.stage == "PLAN_EDIT":
-                        envelope = edit_bot.run(bot_request)
-                    elif route_decision.stage == "PLAN_CHECK":
-                        envelope = check_bot.run(bot_request)
-                    else:  # OTHER
-                        envelope = other_bot.run(bot_request)
+                # Apply envelope
+                needs_rerun = handle_envelope(st.session_state, envelope)
 
-                    # Apply envelope
-                    needs_rerun = handle_envelope(st.session_state, envelope)
-
-                    if needs_rerun:
-                        st.rerun()
-                    else:
-                        st.rerun()  # Always rerun to show new message
-
-                except Exception as e:
-                    # Handle errors gracefully
-                    error_msg = "😕 Oops! Something went wrong. Please try again or rephrase your request."
-
-                    # Add more specific error messages for common issues
-                    if "API" in str(e) or "quota" in str(e).lower():
-                        error_msg = "⚠️ AI service is temporarily unavailable. Please try again in a moment."
-                    elif "network" in str(e).lower() or "connection" in str(e).lower():
-                        error_msg = "📡 Network error. Please check your connection and try again."
-
-                    push_bot(st.session_state, error_msg)
+                if needs_rerun:
                     st.rerun()
-
-with col_right:
-    tabs = st.tabs(["📋 Tasks", "📅 Calendar", "📊 Analytics"])
-    
-    with tabs[0]:
-        st.markdown("### Today's Tasks")
-        today_tasks = get_today_schedules(st.session_state)
-        
-        if today_tasks:
-            for task in sorted(today_tasks, key=lambda x: x['start_time']):
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    checked = st.checkbox("", value=task['completed'], key=f"cb_{task['id']}")
-                    if checked != task['completed']:
-                        task['completed'] = checked
-                        st.rerun()
-                with col2:
-                    st.markdown(format_schedule_display(task))
-        else:
-            st.info("No tasks for today. Add one in the chat!")
-        
-        st.divider()
-        st.markdown("### This Week")
-        week_tasks = get_week_schedules(st.session_state)
-        
-        if week_tasks:
-            by_date = {}
-            for t in week_tasks:
-                by_date.setdefault(t['date'], []).append(t)
-            
-            for date_str in sorted(by_date.keys()):
-                date_obj = datetime.fromisoformat(date_str).date()
-                with st.expander(f"{date_obj.strftime('%a, %b %d')} ({len(by_date[date_str])})"):
-                    for t in sorted(by_date[date_str], key=lambda x: x['start_time']):
-                        st.markdown(format_schedule_display(t))
-        else:
-            st.info("No tasks this week.")
-    
-    with tabs[1]:
-        st.markdown("### Weekly Calendar")
-        today = today_local(st.session_state)
-        start_week = today - timedelta(days=today.weekday())
-        week_dates = [start_week + timedelta(days=i) for i in range(7)]
-        
-        cols = st.columns(7)
-        for i, d in enumerate(week_dates):
-            with cols[i]:
-                is_today = d == today
-                st.markdown(f"**{d.strftime('%a')}**  \n{'📍' if is_today else ''}{d.strftime('%d')}")
-        
-        st.divider()
-        
-        cols = st.columns(7)
-        for i, d in enumerate(week_dates):
-            with cols[i]:
-                day_tasks = [s for s in st.session_state.schedules if s['date'] == d.isoformat()]
-                if day_tasks:
-                    for s in sorted(day_tasks, key=lambda x: x['start_time']):
-                        emoji = {'work': '🔵', 'meeting': '🟡', 'personal': '🟢', 'break': '⚪'}.get(s['type'], '⚫')
-                        st.markdown(f"{emoji} {s['start_time'][:5]}")
-                        st.caption(s['title'][:15])
                 else:
-                    st.markdown("—")
-    
-    with tabs[2]:
-        st.markdown("### Time Analytics")
-        total = len(st.session_state.schedules)
-        completed = sum(1 for s in st.session_state.schedules if s['completed'])
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total Tasks", total)
-            st.metric("Completion Rate", f"{(completed/total*100 if total else 0):.0f}%")
-        with col2:
-            st.metric("Completed", completed)
-            st.metric("Pending", total - completed)
-        
-        st.divider()
-        st.markdown("### Task Breakdown")
-        types = {}
-        for s in st.session_state.schedules:
-            types[s['type']] = types.get(s['type'], 0) + 1
-        
-        if types:
-            for t, c in types.items():
-                emoji = {'work': '💼', 'meeting': '🤝', 'personal': '🏃', 'break': '☕'}.get(t, '📅')
-                st.markdown(f"{emoji} **{t.capitalize()}**: {c}")
+                    st.rerun()  # Always rerun to show new message
+
+            except Exception as e:
+                # Handle errors gracefully
+                error_msg = "😕 Oops! Something went wrong. Please try again or rephrase your request."
+
+                # Add more specific error messages for common issues
+                if "API" in str(e) or "quota" in str(e).lower():
+                    error_msg = "⚠️ AI service is temporarily unavailable. Please try again in a moment."
+                elif "network" in str(e).lower() or "connection" in str(e).lower():
+                    error_msg = "📡 Network error. Please check your connection and try again."
+
+                push_bot(st.session_state, error_msg)
+                st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 st.markdown("""
