@@ -151,15 +151,27 @@ st.markdown("""
 
     /* Fixed chat container at bottom */
     .fixed-chat-container {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: white;
-        border-top: 2px solid #e2e8f0;
-        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
-        z-index: 1000;
-        padding: 1rem;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        background: white !important;
+        border-top: 2px solid #e2e8f0 !important;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1) !important;
+        z-index: 999999 !important;
+        padding: 1rem !important;
+        margin: 0 !important;
+    }
+
+    /* Ensure fixed chat works with Streamlit's structure */
+    [data-testid="stVerticalBlock"] > div:has(.fixed-chat-container) {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        z-index: 999999 !important;
     }
 
     /* Chat history container */
@@ -189,12 +201,26 @@ st.markdown("""
 
     /* Add padding to main content to prevent overlap with fixed chat */
     .main-content-area {
-        padding-bottom: 250px;
+        padding-bottom: 300px !important;
+        margin-bottom: 2rem !important;
     }
 
-    /* Adjust for sidebar */
-    [data-testid="stSidebar"] ~ .main .block-container {
-        max-width: 100%;
+    /* Ensure main content scrolls properly */
+    .main .block-container {
+        padding-bottom: 350px !important;
+    }
+
+    /* Adjust for sidebar - chat should respect sidebar */
+    section[data-testid="stSidebar"] ~ .main .fixed-chat-container {
+        left: 0 !important;
+        width: 100% !important;
+    }
+
+    @media (min-width: 769px) {
+        section[data-testid="stSidebar"]:not([aria-expanded="false"]) ~ .main .fixed-chat-container {
+            left: 21rem !important;
+            width: calc(100% - 21rem) !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -396,7 +422,20 @@ with tabs[2]:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Fixed chat section at bottom
-st.markdown('<div class="fixed-chat-container">', unsafe_allow_html=True)
+st.markdown("""
+<style>
+/* Additional override to ensure fixed positioning works */
+div[data-testid="stVerticalBlock"]:has(div.fixed-chat-container) {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    z-index: 999999 !important;
+}
+</style>
+<div class="fixed-chat-container">
+""", unsafe_allow_html=True)
 
 # History toggle button
 col_toggle, col_spacer = st.columns([3, 7])
