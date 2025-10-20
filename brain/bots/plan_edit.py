@@ -70,13 +70,20 @@ Respond with JSON containing ONE of these:
 
 Only include fields that should change.
 """
-        
-        result = self.llm.classify_json(
-            system_instruction=self.identity,
-            prompt=prompt,
-            schema_hint='{"action": "delete|complete|update", "id": "...", "changes": {...}}'
-        )
-        
+
+        try:
+            result = self.llm.classify_json(
+                system_instruction=self.identity,
+                prompt=prompt,
+                schema_hint='{"action": "delete|complete|update", "id": "...", "changes": {...}}'
+            )
+        except Exception as e:
+            return BotEnvelope(
+                stage="PLAN_EDIT",
+                user_facing="😕 I'm having trouble processing your request. Please try again or be more specific about which task you want to edit.",
+                ask_confirmation=False
+            )
+
         if not result or 'id' not in result:
             return BotEnvelope(
                 stage="PLAN_EDIT",

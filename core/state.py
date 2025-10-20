@@ -7,12 +7,125 @@ from datetime import datetime, date, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 import uuid
+import json
+import os
+from pathlib import Path
+
+
+# Data persistence
+DATA_DIR = Path("data")
+SCHEDULES_FILE = DATA_DIR / "schedules.json"
+
+
+def ensure_data_dir():
+    """Ensure data directory exists."""
+    DATA_DIR.mkdir(exist_ok=True)
+
+
+def save_schedules(schedules: list[dict]) -> bool:
+    """
+    Save schedules to JSON file.
+
+    Args:
+        schedules: List of schedule dictionaries
+
+    Returns:
+        True if saved successfully, False otherwise
+    """
+    try:
+        ensure_data_dir()
+        with open(SCHEDULES_FILE, 'w') as f:
+            json.dump(schedules, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving schedules: {e}")
+        return False
+
+
+def load_schedules() -> list[dict]:
+    """
+    Load schedules from JSON file.
+
+    Returns:
+        List of schedule dictionaries, or empty list if file doesn't exist
+    """
+    try:
+        if SCHEDULES_FILE.exists():
+            with open(SCHEDULES_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Error loading schedules: {e}")
+    return []
+
+
+def detect_time_conflicts(schedules: list[dict], new_schedule: dict) -> list[dict]:
+    """
+    Detect conflicts between a new schedule and existing schedules.
+
+    Args:
+        schedules: Existing schedules
+        new_schedule: New schedule to check
+
+    Returns:
+        List of conflicting schedules
+    """
+    conflicts = []
+    new_date = new_schedule.get('date')
+    new_start = new_schedule.get('start_time')
+    new_end = new_schedule.get('end_time')
+
+    if not all([new_date, new_start, new_end]):
+        return conflicts
+
+    for schedule in schedules:
+        # Skip if different dates
+        if schedule.get('date') != new_date:
+            continue
+
+        # Skip if same ID (editing existing task)
+        if schedule.get('id') == new_schedule.get('id'):
+            continue
+
+        schedule_start = schedule.get('start_time')
+        schedule_end = schedule.get('end_time')
+
+        if not all([schedule_start, schedule_end]):
+            continue
+
+        # Check for overlap
+        # Times overlap if: new_start < schedule_end AND new_end > schedule_start
+        if new_start < schedule_end and new_end > schedule_start:
+            conflicts.append(schedule)
+
+    return conflicts
+
+
+def calculate_end_time(start_time: str, duration: int) -> str:
+    """
+    Calculate end time from start time and duration, handling midnight overflow.
+
+    Args:
+        start_time: Start time in HH:MM format
+        duration: Duration in minutes
+
+    Returns:
+        End time in HH:MM format (handles overflow past midnight)
+    """
+    h, m = map(int, start_time.split(":"))
+    total_minutes = h * 60 + m + duration
+
+    # Handle overflow past midnight
+    end_h, end_m = divmod(total_minutes, 60)
+    end_h = end_h % 24  # Wrap around at 24 hours
+
+    return f"{end_h:02d}:{end_m:02d}"
 
 
 def ensure_session_defaults(st_session_state):
     """Initialize session state with default values."""
     if 'schedules' not in st_session_state:
-        st_session_state.schedules = []
+        # Load schedules from persistent storage
+        st_session_state.schedules = load_schedules()
     if 'chat_history' not in st_session_state:
         st_session_state.chat_history = []
     if 'stage' not in st_session_state:
@@ -47,11 +160,11 @@ def generate_id() -> str:
     return str(uuid.uuid4())[:8]
 
 
-def add_schedule(st_session_state, title: str, date_str: str, start_time: str, 
+def add_schedule(st_session_state, title: str, date_str: str, start_time: str,
                  duration: int, end_time: Optional[str] = None) -> dict:
     """
     Add a new schedule entry.
-    
+
     Args:
         st_session_state: Streamlit session state
         title: Task title
@@ -59,17 +172,14 @@ def add_schedule(st_session_state, title: str, date_str: str, start_time: str,
         start_time: Start time in HH:MM format
         duration: Duration in minutes
         end_time: Optional end time in HH:MM format
-        
+
     Returns:
         Created schedule entry
     """
-    # Calculate end_time if not provided
+    # Calculate end_time if not provided (using new overflow-safe function)
     if not end_time:
-        h, m = map(int, start_time.split(":"))
-        total_minutes = h * 60 + m + duration
-        end_h, end_m = divmod(total_minutes, 60)
-        end_time = f"{end_h:02d}:{end_m:02d}"
-    
+        end_time = calculate_end_time(start_time, duration)
+
     entry = {
         'id': generate_id(),
         'title': title,
@@ -81,21 +191,25 @@ def add_schedule(st_session_state, title: str, date_str: str, start_time: str,
         'completed': False,
         'created_at': now_local(st_session_state).isoformat()
     }
-    
+
     st_session_state.schedules.append(entry)
     st_session_state.version += 1
+
+    # Save to persistent storage
+    save_schedules(st_session_state.schedules)
+
     return entry
 
 
 def update_schedule(st_session_state, schedule_id: str, changes: dict) -> bool:
     """
     Update an existing schedule entry.
-    
+
     Args:
         st_session_state: Streamlit session state
         schedule_id: ID of schedule to update
         changes: Dictionary of fields to update
-        
+
     Returns:
         True if updated, False if not found
     """
@@ -103,6 +217,8 @@ def update_schedule(st_session_state, schedule_id: str, changes: dict) -> bool:
         if schedule['id'] == schedule_id:
             schedule.update(changes)
             st_session_state.version += 1
+            # Save to persistent storage
+            save_schedules(st_session_state.schedules)
             return True
     return False
 
@@ -110,11 +226,11 @@ def update_schedule(st_session_state, schedule_id: str, changes: dict) -> bool:
 def delete_schedule(st_session_state, schedule_id: str) -> bool:
     """
     Delete a schedule entry.
-    
+
     Args:
         st_session_state: Streamlit session state
         schedule_id: ID of schedule to delete
-        
+
     Returns:
         True if deleted, False if not found
     """
@@ -124,6 +240,8 @@ def delete_schedule(st_session_state, schedule_id: str) -> bool:
     ]
     if len(st_session_state.schedules) < initial_len:
         st_session_state.version += 1
+        # Save to persistent storage
+        save_schedules(st_session_state.schedules)
         return True
     return False
 

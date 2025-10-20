@@ -6,6 +6,7 @@ Extracts task details and asks for confirmation.
 from core.contracts import BotRequest, BotEnvelope
 from core.llm import LLM
 from core.timeparse import parse_create_minimum
+from core.state import calculate_end_time, detect_time_conflicts
 
 
 class CreateBot:
@@ -45,13 +46,10 @@ class CreateBot:
             request.user_text,
             request.now_iso_as_dt.date()
         )
-        
-        # Calculate end_time
-        h, m = map(int, start_time.split(":"))
-        total_minutes = h * 60 + m + duration
-        end_h, end_m = divmod(total_minutes, 60)
-        end_time = f"{end_h:02d}:{end_m:02d}"
-        
+
+        # Calculate end_time using overflow-safe function
+        end_time = calculate_end_time(start_time, duration)
+
         # Build proposal
         proposal = {
             'title': title,
@@ -60,7 +58,10 @@ class CreateBot:
             'end_time': end_time,
             'duration': duration
         }
-        
+
+        # Check for conflicts
+        conflicts = detect_time_conflicts(request.schedules_snapshot, proposal)
+
         # Use LLM to generate friendly confirmation message
         prompt = f"""
 User wants to create a task with these details:
@@ -75,17 +76,28 @@ Keep it brief and natural. End with "Save this?"
 Current time: {request.now_iso}
 Timezone: {request.tz_name}
 """
-        
-        confirmation_msg = self.llm.generate(
-            system_instruction=self.identity,
-            prompt=prompt,
-            temperature=0.6,
-            max_tokens=256
-        )
-        
+
+        try:
+            confirmation_msg = self.llm.generate(
+                system_instruction=self.identity,
+                prompt=prompt,
+                temperature=0.6,
+                max_tokens=256
+            )
+        except Exception as e:
+            # Fallback if LLM fails
+            confirmation_msg = ""
+
         if not confirmation_msg or "save this?" not in confirmation_msg.lower():
             # Fallback confirmation
             confirmation_msg = f"I'll add **{title}** on {date_str} from {start_time} to {end_time}. Save this?"
+
+        # Add conflict warning if needed
+        if conflicts:
+            conflict_names = ", ".join([f"**{c['title']}**" for c in conflicts[:2]])
+            if len(conflicts) > 2:
+                conflict_names += f" and {len(conflicts) - 2} more"
+            confirmation_msg = f"⚠️ **Time conflict detected!** This overlaps with: {conflict_names}\n\n{confirmation_msg}"
         
         return BotEnvelope(
             stage="PLAN_CREATE",

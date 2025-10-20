@@ -253,44 +253,60 @@ with col_left:
     # Process message
     if send_button and user_input.strip():
         push_user(st.session_state, user_input)
-        
+
         # Try confirmation first
         if try_handle_confirmation(st.session_state, user_input):
             st.rerun()
         else:
-            # Build bot request
-            bot_request = BotRequest(
-                user_text=user_input,
-                now_iso=now_local(st.session_state).isoformat(),
-                tz_name=st.session_state.tz_name,
-                schedules_snapshot=schedules_snapshot_sorted(st.session_state),
-                system_identity=system_identity,
-                chat_history=st.session_state.chat_history[-5:]
-            )
-            
-            # Route to appropriate bot
-            route_decision = router.route(
-                user_input,
-                awaiting_confirmation=st.session_state.awaiting_confirmation
-            )
-            
-            # Call appropriate bot
-            if route_decision.stage == "PLAN_CREATE":
-                envelope = create_bot.run(bot_request)
-            elif route_decision.stage == "PLAN_EDIT":
-                envelope = edit_bot.run(bot_request)
-            elif route_decision.stage == "PLAN_CHECK":
-                envelope = check_bot.run(bot_request)
-            else:  # OTHER
-                envelope = other_bot.run(bot_request)
-            
-            # Apply envelope
-            needs_rerun = handle_envelope(st.session_state, envelope)
-            
-            if needs_rerun:
-                st.rerun()
-            else:
-                st.rerun()  # Always rerun to show new message
+            # Show loading indicator while processing
+            with st.spinner("🤔 Thinking..."):
+                try:
+                    # Build bot request
+                    bot_request = BotRequest(
+                        user_text=user_input,
+                        now_iso=now_local(st.session_state).isoformat(),
+                        tz_name=st.session_state.tz_name,
+                        schedules_snapshot=schedules_snapshot_sorted(st.session_state),
+                        system_identity=system_identity,
+                        chat_history=st.session_state.chat_history[-5:]
+                    )
+
+                    # Route to appropriate bot
+                    route_decision = router.route(
+                        user_input,
+                        awaiting_confirmation=st.session_state.awaiting_confirmation
+                    )
+
+                    # Call appropriate bot
+                    if route_decision.stage == "PLAN_CREATE":
+                        envelope = create_bot.run(bot_request)
+                    elif route_decision.stage == "PLAN_EDIT":
+                        envelope = edit_bot.run(bot_request)
+                    elif route_decision.stage == "PLAN_CHECK":
+                        envelope = check_bot.run(bot_request)
+                    else:  # OTHER
+                        envelope = other_bot.run(bot_request)
+
+                    # Apply envelope
+                    needs_rerun = handle_envelope(st.session_state, envelope)
+
+                    if needs_rerun:
+                        st.rerun()
+                    else:
+                        st.rerun()  # Always rerun to show new message
+
+                except Exception as e:
+                    # Handle errors gracefully
+                    error_msg = "😕 Oops! Something went wrong. Please try again or rephrase your request."
+
+                    # Add more specific error messages for common issues
+                    if "API" in str(e) or "quota" in str(e).lower():
+                        error_msg = "⚠️ AI service is temporarily unavailable. Please try again in a moment."
+                    elif "network" in str(e).lower() or "connection" in str(e).lower():
+                        error_msg = "📡 Network error. Please check your connection and try again."
+
+                    push_bot(st.session_state, error_msg)
+                    st.rerun()
 
 with col_right:
     tabs = st.tabs(["📋 Tasks", "📅 Calendar", "📊 Analytics"])
