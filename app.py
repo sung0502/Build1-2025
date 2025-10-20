@@ -29,7 +29,7 @@ st.set_page_config(
     page_title="TimeBuddy - Your Personal Time Assistant",
     page_icon="⏱️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Custom CSS
@@ -42,16 +42,59 @@ st.markdown("""
     }
 
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+        display: none;
     }
 
-    .main-header {
+    .top-nav {
         background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
         color: white;
-        padding: 1.5rem;
+        padding: 1rem 1.5rem;
         border-radius: 12px;
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
         box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .top-nav-left {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .top-nav-center {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .top-nav-right {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .nav-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0;
+    }
+
+    .nav-time {
+        font-size: 0.9rem;
+        opacity: 0.95;
+    }
+
+    .nav-icon {
+        cursor: pointer;
+        padding: 0.5rem;
+        border-radius: 8px;
+        transition: background 0.2s;
+    }
+
+    .nav-icon:hover {
+        background: rgba(255, 255, 255, 0.1);
     }
 
     .user-message {
@@ -92,6 +135,20 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
+    .section-header {
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        padding: 1rem 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0 0.75rem 0;
+        border-left: 4px solid var(--primary);
+    }
+
+    .section-header h3 {
+        margin: 0;
+        color: var(--primary-dark);
+        font-size: 1.25rem;
+    }
+
     /* Mobile responsive styles */
     @media (max-width: 768px) {
         .user-message {
@@ -104,12 +161,14 @@ st.markdown("""
             max-width: 85%;
         }
 
-        .main-header {
-            padding: 1rem;
+        .top-nav {
+            padding: 0.75rem 1rem;
+            flex-direction: column;
+            gap: 0.5rem;
         }
 
-        .main-header h1 {
-            font-size: 1.5rem !important;
+        .nav-title {
+            font-size: 1.25rem;
         }
 
         /* Make calendar columns more compact on tablets */
@@ -185,75 +244,65 @@ llm, router, create_bot, edit_bot, check_bot, other_bot = init_brain()
 if 'llm' not in st.session_state:
     st.session_state.llm = llm
 
-# Sidebar
-with st.sidebar:
-    st.title("⏱️ TimeBuddy")
-    st.caption("Your Personal Time Assistant")
-    st.divider()
-    
-    st.markdown("### 👤 User Profile")
-    st.markdown("**User** • Free Plan")
-    st.divider()
-    
-    # Timezone selector
-    st.markdown("### 🕒 Time & Timezone")
-    tz_options = [
-        "America/Phoenix", "America/Los_Angeles", "America/Denver",
-        "America/Chicago", "America/New_York", "Europe/London",
-        "Europe/Paris", "Asia/Tokyo", "Asia/Shanghai", "UTC"
-    ]
-    
-    current_tz = st.session_state.tz_name
-    if current_tz not in tz_options:
-        tz_options = [current_tz] + tz_options
-    
+# Initialize modal states
+if 'show_analytics' not in st.session_state:
+    st.session_state.show_analytics = False
+if 'show_help' not in st.session_state:
+    st.session_state.show_help = False
+
+# Timezone selector (hidden, but functional)
+tz_options = [
+    "America/Phoenix", "America/Los_Angeles", "America/Denver",
+    "America/Chicago", "America/New_York", "Europe/London",
+    "Europe/Paris", "Asia/Tokyo", "Asia/Shanghai", "UTC"
+]
+
+current_tz = st.session_state.tz_name
+if current_tz not in tz_options:
+    tz_options = [current_tz] + tz_options
+
+# Top Navigation Bar
+col_nav_left, col_nav_center, col_nav_right = st.columns([2, 3, 2])
+
+with col_nav_left:
+    st.markdown("""
+    <div style="padding: 0.5rem 0;">
+        <h2 style="margin: 0; color: var(--primary);">⏱️ TimeBuddy</h2>
+        <p style="margin: 0; color: #64748b; font-size: 0.85rem;">Your Personal Time Assistant</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_nav_center:
     selected_tz = st.selectbox(
         "Timezone",
         tz_options,
-        index=tz_options.index(current_tz)
+        index=tz_options.index(current_tz),
+        key="tz_selector",
+        label_visibility="collapsed"
     )
     st.session_state.tz_name = selected_tz
-    
-    st.metric(
-        "Current time",
-        now_local(st.session_state).strftime("%Y-%m-%d %H:%M")
-    )
-    
-    st.divider()
-    
-    with st.expander("ℹ️ About TimeBuddy"):
-        st.markdown("""
-        **TimeBuddy** is your AI-powered time assistant.
-        
-        **Creating Tasks:**
-        - "Add team meeting tomorrow at 2pm"
-        - "Schedule workout at 7am for 1 hour"
-        
-        **Editing Tasks:**
-        - "Move my workout to 8am"
-        - "Cancel the meeting"
-        
-        **Checking Schedule:**
-        - "Show me today's schedule"
-        - "What's on this week?"
-        
-        **Version:** 2.0 (Modular Architecture)  
-        **Powered by:** Gemini AI
-        """)
 
-# Main header
-st.markdown(f"""
-<div class="main-header">
-    <h1 style="margin: 0;">TimeBuddy Assistant</h1>
-    <p style="margin: 0.25rem 0 0 0; opacity: 0.9;">
-        Timezone: <b>{st.session_state.tz_name}</b> • 
-        Local time: <b>{now_local(st.session_state).strftime('%H:%M')}</b>
-    </p>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="text-align: center; color: #64748b; font-size: 0.9rem; margin-top: -0.5rem;">
+        🕒 {now_local(st.session_state).strftime('%Y-%m-%d %H:%M')}
+    </div>
+    """, unsafe_allow_html=True)
 
-# Main layout
-col_left, col_right = st.columns([2, 1])
+with col_nav_right:
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        if st.button("📊 Analytics", key="nav_analytics", use_container_width=True):
+            st.session_state.show_analytics = True
+            st.rerun()
+    with col_r2:
+        if st.button("❓ Help", key="nav_help", use_container_width=True):
+            st.session_state.show_help = True
+            st.rerun()
+
+st.divider()
+
+# Main layout - Chat (33%) | Tasks & Calendar (67%)
+col_left, col_right = st.columns([1, 2])
 
 with col_left:
     st.markdown("### 💬 Chat Assistant")
@@ -281,24 +330,7 @@ with col_left:
                 # Convert markdown **text** to HTML <strong>text</strong> for proper rendering
                 content = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', msg["content"])
                 st.markdown(f'<div class="bot-message">{content}</div>', unsafe_allow_html=True)
-    
-    # Quick commands
-    st.markdown("**Quick Commands:**")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    quick_actions = {
-        "Add task": "Schedule a new task for me",
-        "Show today": "What's on my schedule today?",
-        "Edit task": "I need to change a task",
-        "View week": "Show me this week's schedule"
-    }
-    
-    for col, (label, command) in zip([col1, col2, col3, col4], quick_actions.items()):
-        with col:
-            if st.button(label, key=f"quick_{label}", use_container_width=True):
-                st.session_state.pending_message = command
-                st.rerun()
-    
+
     # Input form
     with st.form(key="chat_form", clear_on_submit=True):
         default_text = st.session_state.get('pending_message', '')
@@ -379,91 +411,168 @@ with col_left:
                     st.rerun()
 
 with col_right:
-    tabs = st.tabs(["📋 Tasks", "📅 Calendar", "📊 Analytics"])
-    
-    with tabs[0]:
-        st.markdown("### Today's Tasks")
-        today_tasks = get_today_schedules(st.session_state)
-        
-        if today_tasks:
-            for task in sorted(today_tasks, key=lambda x: x['start_time']):
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    checked = st.checkbox("", value=task['completed'], key=f"cb_{task['id']}")
-                    if checked != task['completed']:
-                        task['completed'] = checked
-                        st.rerun()
-                with col2:
-                    st.markdown(format_schedule_display(task))
-        else:
-            st.info("No tasks for today. Add one in the chat!")
-        
-        st.divider()
-        st.markdown("### This Week")
+    # Tasks Section
+    st.markdown('<div class="section-header"><h3>📋 Today\'s Tasks</h3></div>', unsafe_allow_html=True)
+
+    today_tasks = get_today_schedules(st.session_state)
+
+    if today_tasks:
+        for task in sorted(today_tasks, key=lambda x: x['start_time']):
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                checked = st.checkbox("", value=task['completed'], key=f"cb_{task['id']}")
+                if checked != task['completed']:
+                    task['completed'] = checked
+                    st.rerun()
+            with col2:
+                st.markdown(format_schedule_display(task))
+    else:
+        st.info("No tasks for today. Add one in the chat!")
+
+    # Week Tasks Expander
+    with st.expander("📅 This Week's Tasks", expanded=False):
         week_tasks = get_week_schedules(st.session_state)
-        
+
         if week_tasks:
             by_date = {}
             for t in week_tasks:
                 by_date.setdefault(t['date'], []).append(t)
-            
+
             for date_str in sorted(by_date.keys()):
                 date_obj = datetime.fromisoformat(date_str).date()
-                with st.expander(f"{date_obj.strftime('%a, %b %d')} ({len(by_date[date_str])})"):
-                    for t in sorted(by_date[date_str], key=lambda x: x['start_time']):
-                        st.markdown(format_schedule_display(t))
+                st.markdown(f"**{date_obj.strftime('%a, %b %d')}** ({len(by_date[date_str])} tasks)")
+                for t in sorted(by_date[date_str], key=lambda x: x['start_time']):
+                    st.markdown(f"  {format_schedule_display(t)}")
+                st.markdown("")
         else:
             st.info("No tasks this week.")
-    
-    with tabs[1]:
-        st.markdown("### Weekly Calendar")
-        today = today_local(st.session_state)
-        start_week = today - timedelta(days=today.weekday())
-        week_dates = [start_week + timedelta(days=i) for i in range(7)]
-        
-        cols = st.columns(7)
-        for i, d in enumerate(week_dates):
-            with cols[i]:
-                is_today = d == today
-                st.markdown(f"**{d.strftime('%a')}**  \n{'📍' if is_today else ''}{d.strftime('%d')}")
-        
-        st.divider()
-        
-        cols = st.columns(7)
-        for i, d in enumerate(week_dates):
-            with cols[i]:
-                day_tasks = [s for s in st.session_state.schedules if s['date'] == d.isoformat()]
-                if day_tasks:
-                    for s in sorted(day_tasks, key=lambda x: x['start_time']):
-                        emoji = {'work': '🔵', 'meeting': '🟡', 'personal': '🟢', 'break': '⚪'}.get(s['type'], '⚫')
-                        st.markdown(f"{emoji} {s['start_time'][:5]}")
-                        st.caption(s['title'][:15])
-                else:
-                    st.markdown("—")
-    
-    with tabs[2]:
-        st.markdown("### Time Analytics")
+
+    st.markdown("")  # Spacing
+
+    # Calendar Section
+    st.markdown('<div class="section-header"><h3>📅 Weekly Calendar</h3></div>', unsafe_allow_html=True)
+
+    today = today_local(st.session_state)
+    start_week = today - timedelta(days=today.weekday())
+    week_dates = [start_week + timedelta(days=i) for i in range(7)]
+
+    # Calendar header
+    cols = st.columns(7)
+    for i, d in enumerate(week_dates):
+        with cols[i]:
+            is_today = d == today
+            st.markdown(f"**{d.strftime('%a')}**  \n{'📍' if is_today else ''}{d.strftime('%d')}")
+
+    st.divider()
+
+    # Calendar content
+    cols = st.columns(7)
+    for i, d in enumerate(week_dates):
+        with cols[i]:
+            day_tasks = [s for s in st.session_state.schedules if s['date'] == d.isoformat()]
+            if day_tasks:
+                for s in sorted(day_tasks, key=lambda x: x['start_time']):
+                    emoji = {'work': '🔵', 'meeting': '🟡', 'personal': '🟢', 'break': '⚪'}.get(s['type'], '⚫')
+                    st.markdown(f"{emoji} {s['start_time'][:5]}")
+                    st.caption(s['title'][:15])
+            else:
+                st.markdown("—")
+
+# Analytics Modal
+if st.session_state.show_analytics:
+    @st.dialog("📊 Time Analytics", width="large")
+    def show_analytics_modal():
         total = len(st.session_state.schedules)
         completed = sum(1 for s in st.session_state.schedules if s['completed'])
-        
-        col1, col2 = st.columns(2)
+
+        st.markdown("### 📈 Overview")
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Tasks", total)
-            st.metric("Completion Rate", f"{(completed/total*100 if total else 0):.0f}%")
         with col2:
             st.metric("Completed", completed)
+        with col3:
             st.metric("Pending", total - completed)
-        
+        with col4:
+            st.metric("Completion Rate", f"{(completed/total*100 if total else 0):.0f}%")
+
         st.divider()
-        st.markdown("### Task Breakdown")
+
+        st.markdown("### 🏷️ Task Breakdown by Type")
         types = {}
         for s in st.session_state.schedules:
             types[s['type']] = types.get(s['type'], 0) + 1
-        
+
         if types:
             for t, c in types.items():
                 emoji = {'work': '💼', 'meeting': '🤝', 'personal': '🏃', 'break': '☕'}.get(t, '📅')
-                st.markdown(f"{emoji} **{t.capitalize()}**: {c}")
+                st.markdown(f"{emoji} **{t.capitalize()}**: {c} tasks")
+        else:
+            st.info("No tasks yet. Start adding tasks to see analytics!")
+
+        st.divider()
+
+        if st.button("Close", key="close_analytics", use_container_width=True):
+            st.session_state.show_analytics = False
+            st.rerun()
+
+    show_analytics_modal()
+
+# Help Modal
+if st.session_state.show_help:
+    @st.dialog("❓ Help & About", width="large")
+    def show_help_modal():
+        st.markdown("""
+        ### 🤖 About TimeBuddy
+
+        **TimeBuddy** is your AI-powered personal time assistant built with a modular architecture.
+
+        ---
+
+        ### 📝 How to Use
+
+        #### Creating Tasks:
+        - "Add team meeting tomorrow at 2pm"
+        - "Schedule workout at 7am for 1 hour"
+        - "Set up lunch with Sarah on Friday at noon"
+
+        #### Editing Tasks:
+        - "Move my workout to 8am"
+        - "Cancel the meeting"
+        - "Change the team meeting to 3pm"
+
+        #### Checking Schedule:
+        - "Show me today's schedule"
+        - "What's on this week?"
+        - "Do I have anything tomorrow?"
+
+        ---
+
+        ### 🔧 Features
+
+        - **Smart AI Routing**: Automatically routes your requests to specialized bots
+        - **Natural Language**: Talk to TimeBuddy like a personal assistant
+        - **Multi-timezone Support**: Work across different time zones seamlessly
+        - **Task Management**: Create, edit, check, and complete tasks with ease
+        - **Visual Calendar**: See your week at a glance
+
+        ---
+
+        ### ℹ️ System Information
+
+        - **Version:** 2.0 (Modular Architecture)
+        - **AI Engine:** Gemini AI
+        - **Framework:** Streamlit
+        - **Architecture:** Router + Specialized Bots (Create, Edit, Check, Other)
+        """)
+
+        st.divider()
+
+        if st.button("Close", key="close_help", use_container_width=True):
+            st.session_state.show_help = False
+            st.rerun()
+
+    show_help_modal()
 
 st.divider()
 st.markdown("""
