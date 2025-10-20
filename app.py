@@ -3,6 +3,7 @@
 TimeBuddy - Modular AI Time Assistant
 Uses Router + 4 specialized bots (Create, Edit, Check, Other)
 """
+import re
 import streamlit as st
 from datetime import datetime, timedelta
 
@@ -273,7 +274,9 @@ with col_left:
             if msg['role'] == 'user':
                 st.markdown(f'<div class="user-message">{msg["content"]}</div>', unsafe_allow_html=True)
             else:
-                st.markdown(f'<div class="bot-message">{msg["content"]}</div>', unsafe_allow_html=True)
+                # Convert markdown **text** to HTML <strong>text</strong> for proper rendering
+                content = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', msg["content"])
+                st.markdown(f'<div class="bot-message">{content}</div>', unsafe_allow_html=True)
     
     # Quick commands
     st.markdown("**Quick Commands:**")
