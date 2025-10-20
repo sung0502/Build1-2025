@@ -137,6 +137,7 @@ def quick_task_title_guess(text: str) -> str:
     Examples:
         "add team meeting tomorrow" -> "Team Meeting"
         "schedule workout at 7am" -> "Workout"
+        "add workout tomorrow at 7am for 45 minutes" -> "Workout"
     """
     text = text.lower()
 
@@ -144,23 +145,26 @@ def quick_task_title_guess(text: str) -> str:
     for trigger in ['add', 'schedule', 'create', 'plan', 'book', 'set up', 'set', 'remind me to', 'reminder']:
         text = text.replace(trigger, '')
 
-    # Remove complete time expressions (do this before removing individual parts)
+    # Remove complete time expressions with "at" (do this before removing individual parts)
     # "at 7am", "at 7:30pm", "at 14:00", etc.
     text = re.sub(r'\bat\s+\d{1,2}:\d{2}\s*(?:am|pm)?', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bat\s+\d{1,2}\s*(?:am|pm)', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bat\s+\d{1,2}\s*(?:am|pm)?', '', text, flags=re.IGNORECASE)  # Made am/pm optional
     text = re.sub(r'\bat\s+\d{1,2}(?:\s|$)', ' ', text)  # "at 7 " or "at 7" at end
 
-    # Remove standalone time expressions
-    text = re.sub(r'\b\d{1,2}:\d{2}\s*(?:am|pm)?', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\b\d{1,2}\s*(?:am|pm)', '', text, flags=re.IGNORECASE)
-
-    # Remove duration expressions with "for"
+    # Remove duration expressions with "for" (do this before removing standalone durations)
     text = re.sub(r'\bfor\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?|h)\b', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\bfor\s+\d+\s*(?:minutes?|mins?|m)\b', '', text, flags=re.IGNORECASE)
+
+    # Remove standalone time expressions (any leftover time patterns)
+    text = re.sub(r'\b\d{1,2}:\d{2}\s*(?:am|pm)?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b\d{1,2}\s*(?:am|pm)\b', '', text, flags=re.IGNORECASE)
 
     # Remove standalone duration expressions
     text = re.sub(r'\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|h)\b', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\b\d+\s*(?:minutes?|mins?|m)\b', '', text, flags=re.IGNORECASE)
+
+    # Remove any leftover am/pm markers
+    text = re.sub(r'\b(?:am|pm)\b', '', text, flags=re.IGNORECASE)
 
     # Remove date expressions
     for word in ['tomorrow', 'today', 'tonight', 'morning', 'afternoon', 'evening', 'next week', 'next monday', 'next tuesday', 'next wednesday', 'next thursday', 'next friday', 'next saturday', 'next sunday']:
@@ -170,9 +174,12 @@ def quick_task_title_guess(text: str) -> str:
     for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']:
         text = re.sub(r'\b' + day + r'\b', '', text, flags=re.IGNORECASE)
 
-    # Remove leftover connector words
-    for connector in [' for ', ' at ', ' on ', ' from ', ' to ', ' by ', ' in ']:
+    # Remove leftover connector words and prepositions
+    for connector in [' for ', ' at ', ' on ', ' from ', ' to ', ' by ', ' in ', ' the ']:
         text = text.replace(connector, ' ')
+
+    # Remove any leftover standalone numbers
+    text = re.sub(r'\b\d+\b', '', text)
 
     # Clean up extra whitespace
     text = re.sub(r'\s+', ' ', text).strip()
