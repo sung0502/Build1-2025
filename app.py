@@ -12,7 +12,7 @@ from core.llm import LLM
 from core.state import (
     ensure_session_defaults, now_local, today_local,
     get_today_schedules, get_week_schedules, format_schedule_display,
-    schedules_snapshot_sorted, push_user, try_handle_confirmation
+    schedules_snapshot_sorted, push_user, push_bot, try_handle_confirmation
 )
 
 # Brain imports
@@ -39,11 +39,11 @@ st.markdown("""
         --primary-dark: #4f46e5;
         --success: #10b981;
     }
-    
+
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
     }
-    
+
     .main-header {
         background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
         color: white;
@@ -52,7 +52,7 @@ st.markdown("""
         margin-bottom: 2rem;
         box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
     }
-    
+
     .user-message {
         background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
         color: white;
@@ -60,8 +60,11 @@ st.markdown("""
         border-radius: 12px;
         margin: 0.5rem 0;
         margin-left: 20%;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        max-width: 75%;
     }
-    
+
     .bot-message {
         background: #f1f5f9;
         color: #0f172a;
@@ -69,8 +72,11 @@ st.markdown("""
         border-radius: 12px;
         margin: 0.5rem 0;
         margin-right: 20%;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        max-width: 75%;
     }
-    
+
     .task-card {
         background: white;
         border: 1px solid #e2e8f0;
@@ -79,10 +85,67 @@ st.markdown("""
         margin: 0.5rem 0;
         transition: all 0.2s ease;
     }
-    
+
     .task-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Mobile responsive styles */
+    @media (max-width: 768px) {
+        .user-message {
+            margin-left: 10%;
+            max-width: 85%;
+        }
+
+        .bot-message {
+            margin-right: 10%;
+            max-width: 85%;
+        }
+
+        .main-header {
+            padding: 1rem;
+        }
+
+        .main-header h1 {
+            font-size: 1.5rem !important;
+        }
+
+        /* Make calendar columns more compact on tablets */
+        [data-testid="column"] {
+            padding: 0.25rem !important;
+            font-size: 0.85rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .user-message {
+            margin-left: 5%;
+            max-width: 90%;
+        }
+
+        .bot-message {
+            margin-right: 5%;
+            max-width: 90%;
+        }
+
+        /* Make calendar columns very compact on mobile */
+        [data-testid="column"] {
+            padding: 0.15rem !important;
+            font-size: 0.75rem;
+        }
+
+        /* Reduce font size for calendar items */
+        [data-testid="stMarkdownContainer"] p {
+            font-size: 0.75rem;
+            margin: 0.1rem 0;
+        }
+
+        /* Make buttons more compact */
+        [data-testid="stButton"] button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -190,8 +253,8 @@ col_left, col_right = st.columns([2, 1])
 with col_left:
     st.markdown("### 💬 Chat Assistant")
     
-    # Chat container
-    chat_container = st.container(height=400)
+    # Chat container - responsive height
+    chat_container = st.container(height=500)
     with chat_container:
         if not st.session_state.chat_history:
             st.markdown("""
