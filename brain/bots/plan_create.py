@@ -62,35 +62,13 @@ class CreateBot:
         # Check for conflicts
         conflicts = detect_time_conflicts(request.schedules_snapshot, proposal)
 
-        # Use LLM to generate friendly confirmation message
-        prompt = f"""
-User wants to create a task with these details:
-- Title: {title}
-- Date: {date_str}
-- Time: {start_time} - {end_time}
-- Duration: {duration} minutes
+        # Use simple, reliable confirmation message
+        # (LLM tends to rephrase titles incorrectly, so we skip it)
+        from datetime import datetime
+        date_obj = datetime.fromisoformat(date_str).date()
+        friendly_date = date_obj.strftime("%A, %B %d, %Y")  # "Monday, October 21, 2025"
 
-Generate a friendly confirmation message asking the user to confirm.
-Keep it brief and natural. End with "Save this?"
-
-Current time: {request.now_iso}
-Timezone: {request.tz_name}
-"""
-
-        try:
-            confirmation_msg = self.llm.generate(
-                system_instruction=self.identity,
-                prompt=prompt,
-                temperature=0.6,
-                max_tokens=256
-            )
-        except Exception as e:
-            # Fallback if LLM fails
-            confirmation_msg = ""
-
-        if not confirmation_msg or "save this?" not in confirmation_msg.lower():
-            # Fallback confirmation
-            confirmation_msg = f"I'll add **{title}** on {date_str} from {start_time} to {end_time}. Save this?"
+        confirmation_msg = f"I'll add **{title}** on {friendly_date} from {start_time} to {end_time} ({duration} minutes). Save this?"
 
         # Add conflict warning if needed
         if conflicts:
