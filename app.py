@@ -4,8 +4,16 @@ TimeBuddy - Modular AI Time Assistant
 Uses Router + 4 specialized bots (Create, Edit, Check, Other)
 """
 import re
+import logging
 import streamlit as st
 from datetime import datetime, timedelta
+
+# Setup logger for debugging
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 # Core imports
 from core.contracts import BotRequest
@@ -380,14 +388,20 @@ with col_left:
                     )
 
                     # Call appropriate bot
+                    logger.info(f"🤖 Calling bot for stage: {route_decision.stage}")
                     if route_decision.stage == "PLAN_CREATE":
+                        logger.info("   → CreateBot.run()")
                         envelope = create_bot.run(bot_request)
                     elif route_decision.stage == "PLAN_EDIT":
+                        logger.info("   → EditBot.run()")
                         envelope = edit_bot.run(bot_request)
                     elif route_decision.stage == "PLAN_CHECK":
+                        logger.info("   → CheckBot.run()")
                         envelope = check_bot.run(bot_request)
                     else:  # OTHER
+                        logger.info("   → OtherBot.run()")
                         envelope = other_bot.run(bot_request)
+                    logger.info(f"   ✅ Bot completed - returned envelope")
 
                     # Apply envelope
                     needs_rerun = handle_envelope(st.session_state, envelope)
