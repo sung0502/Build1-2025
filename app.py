@@ -157,6 +157,56 @@ st.markdown("""
         font-size: 1.25rem;
     }
 
+    /* Tab styling enhancements */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+        background: #f8fafc;
+        padding: 0.5rem;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 3rem;
+        padding: 0 2rem;
+        background: white;
+        border-radius: 8px;
+        border: 2px solid transparent;
+        color: #64748b;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+    .stTabs [data-baseweb="tab"]:hover {
+        background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+        color: var(--primary-dark);
+        transform: translateY(-2px);
+    }
+
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+        color: white !important;
+        border-color: var(--primary) !important;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    /* Enhanced checkbox styling */
+    .stCheckbox {
+        padding: 0.25rem;
+    }
+
+    .stCheckbox > label > div {
+        background: #f8fafc;
+        border-radius: 6px;
+        padding: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .stCheckbox > label > div:hover {
+        background: #e2e8f0;
+        transform: scale(1.1);
+    }
+
     /* Mobile responsive styles */
     @media (max-width: 768px) {
         .user-message {
@@ -182,6 +232,12 @@ st.markdown("""
         /* Make calendar columns more compact on tablets */
         [data-testid="column"] {
             padding: 0.25rem !important;
+            font-size: 0.85rem;
+        }
+
+        /* Compact tabs on mobile */
+        .stTabs [data-baseweb="tab"] {
+            padding: 0 1rem;
             font-size: 0.85rem;
         }
     }
@@ -425,26 +481,32 @@ with col_left:
                     st.rerun()
 
 with col_right:
-    # Tasks Section
-    st.markdown('<div class="section-header"><h3>📋 Today\'s Tasks</h3></div>', unsafe_allow_html=True)
+    # Tabbed View - Today | Week | Month
+    tab_today, tab_week, tab_month = st.tabs(["📋 Today", "📅 Week", "🗓️ Month"])
 
-    today_tasks = get_today_schedules(st.session_state)
+    # ========== TODAY TAB ==========
+    with tab_today:
+        st.markdown('<div class="section-header"><h3>Today\'s Tasks</h3></div>', unsafe_allow_html=True)
 
-    if today_tasks:
-        for task in sorted(today_tasks, key=lambda x: x['start_time']):
-            col1, col2 = st.columns([1, 4])
-            with col1:
-                checked = st.checkbox("", value=task['completed'], key=f"cb_{task['id']}")
-                if checked != task['completed']:
-                    task['completed'] = checked
-                    st.rerun()
-            with col2:
-                st.markdown(format_schedule_display(task))
-    else:
-        st.info("No tasks for today. Add one in the chat!")
+        today_tasks = get_today_schedules(st.session_state)
 
-    # Week Tasks Expander
-    with st.expander("📅 This Week's Tasks", expanded=False):
+        if today_tasks:
+            for task in sorted(today_tasks, key=lambda x: x['start_time']):
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    checked = st.checkbox("", value=task['completed'], key=f"cb_today_{task['id']}")
+                    if checked != task['completed']:
+                        task['completed'] = checked
+                        st.rerun()
+                with col2:
+                    st.markdown(format_schedule_display(task))
+        else:
+            st.info("🎉 No tasks for today. Add one in the chat!")
+
+    # ========== WEEK TAB ==========
+    with tab_week:
+        st.markdown('<div class="section-header"><h3>This Week\'s Tasks</h3></div>', unsafe_allow_html=True)
+
         week_tasks = get_week_schedules(st.session_state)
 
         if week_tasks:
@@ -454,43 +516,117 @@ with col_right:
 
             for date_str in sorted(by_date.keys()):
                 date_obj = datetime.fromisoformat(date_str).date()
-                st.markdown(f"**{date_obj.strftime('%a, %b %d')}** ({len(by_date[date_str])} tasks)")
+                today = today_local(st.session_state)
+                is_today = date_obj == today
+
+                # Stylized date header
+                date_label = "Today" if is_today else date_obj.strftime('%a, %b %d')
+                emoji_prefix = "📍 " if is_today else ""
+
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                            padding: 0.75rem 1rem;
+                            border-radius: 8px;
+                            margin: 0.5rem 0;
+                            border-left: 3px solid {'var(--primary)' if is_today else '#cbd5e1'};">
+                    <strong>{emoji_prefix}{date_label}</strong> ({len(by_date[date_str])} tasks)
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Tasks for this date
                 for t in sorted(by_date[date_str], key=lambda x: x['start_time']):
-                    st.markdown(f"  {format_schedule_display(t)}")
-                st.markdown("")
+                    col1, col2 = st.columns([1, 10])
+                    with col1:
+                        checked = st.checkbox("", value=t['completed'], key=f"cb_week_{t['id']}")
+                        if checked != t['completed']:
+                            t['completed'] = checked
+                            st.rerun()
+                    with col2:
+                        st.markdown(format_schedule_display(t))
+
+                st.markdown("")  # Spacing
         else:
-            st.info("No tasks this week.")
+            st.info("📅 No tasks this week. Start planning in the chat!")
 
-    st.markdown("")  # Spacing
+    # ========== MONTH TAB ==========
+    with tab_month:
+        st.markdown('<div class="section-header"><h3>Monthly Calendar (4 Weeks)</h3></div>', unsafe_allow_html=True)
 
-    # Calendar Section
-    st.markdown('<div class="section-header"><h3>📅 Weekly Calendar</h3></div>', unsafe_allow_html=True)
+        today = today_local(st.session_state)
 
-    today = today_local(st.session_state)
-    start_week = today - timedelta(days=today.weekday())
-    week_dates = [start_week + timedelta(days=i) for i in range(7)]
+        # Start from the beginning of the current week
+        start_week = today - timedelta(days=today.weekday())
 
-    # Calendar header
-    cols = st.columns(7)
-    for i, d in enumerate(week_dates):
-        with cols[i]:
-            is_today = d == today
-            st.markdown(f"**{d.strftime('%a')}**  \n{'📍' if is_today else ''}{d.strftime('%d')}")
+        # Generate 4 weeks of dates
+        for week_num in range(4):
+            week_start = start_week + timedelta(weeks=week_num)
+            week_dates = [week_start + timedelta(days=i) for i in range(7)]
 
-    st.divider()
+            # Week header with date range
+            week_end = week_dates[-1]
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+                        color: white;
+                        padding: 0.5rem 1rem;
+                        border-radius: 8px;
+                        margin: 1rem 0 0.5rem 0;
+                        text-align: center;
+                        font-weight: 600;">
+                Week {week_num + 1}: {week_start.strftime('%b %d')} - {week_end.strftime('%b %d, %Y')}
+            </div>
+            """, unsafe_allow_html=True)
 
-    # Calendar content
-    cols = st.columns(7)
-    for i, d in enumerate(week_dates):
-        with cols[i]:
-            day_tasks = [s for s in st.session_state.schedules if s['date'] == d.isoformat()]
-            if day_tasks:
-                for s in sorted(day_tasks, key=lambda x: x['start_time']):
-                    emoji = {'work': '🔵', 'meeting': '🟡', 'personal': '🟢', 'break': '⚪'}.get(s['type'], '⚫')
-                    st.markdown(f"{emoji} {s['start_time'][:5]}")
-                    st.caption(s['title'][:15])
-            else:
-                st.markdown("—")
+            # Calendar header row
+            cols = st.columns(7)
+            for i, d in enumerate(week_dates):
+                with cols[i]:
+                    is_today = d == today
+                    day_style = "background: var(--primary); color: white;" if is_today else "background: #f1f5f9;"
+                    st.markdown(f"""
+                    <div style="{day_style}
+                                padding: 0.5rem;
+                                border-radius: 6px;
+                                text-align: center;
+                                margin-bottom: 0.5rem;">
+                        <strong>{d.strftime('%a')}</strong><br>
+                        {'📍 ' if is_today else ''}{d.strftime('%d')}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # Calendar content row
+            cols = st.columns(7)
+            for i, d in enumerate(week_dates):
+                with cols[i]:
+                    day_tasks = [s for s in st.session_state.schedules if s['date'] == d.isoformat()]
+
+                    if day_tasks:
+                        # Show tasks for this day
+                        for s in sorted(day_tasks, key=lambda x: x['start_time']):
+                            emoji = {'work': '🔵', 'meeting': '🟡', 'personal': '🟢', 'break': '⚪'}.get(s['type'], '⚫')
+                            status_emoji = '✅' if s['completed'] else ''
+
+                            st.markdown(f"""
+                            <div style="background: white;
+                                        border: 1px solid #e2e8f0;
+                                        border-radius: 6px;
+                                        padding: 0.4rem;
+                                        margin: 0.25rem 0;
+                                        font-size: 0.85rem;">
+                                {emoji} <strong>{s['start_time'][:5]}</strong> {status_emoji}<br>
+                                <span style="color: #64748b;">{s['title'][:20]}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("""
+                        <div style="text-align: center;
+                                    color: #cbd5e1;
+                                    padding: 1rem 0;
+                                    font-size: 1.5rem;">
+                            —
+                        </div>
+                        """, unsafe_allow_html=True)
+
+            st.markdown("")  # Spacing between weeks
 
 # Analytics Modal
 if st.session_state.show_analytics:
