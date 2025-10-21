@@ -262,7 +262,7 @@ def get_week_schedules(st_session_state) -> list[dict]:
     today = today_local(st_session_state)
     start_week = today - timedelta(days=today.weekday())
     end_week = start_week + timedelta(days=6)
-
+    
     week_schedules = []
     for s in st_session_state.schedules:
         try:
@@ -271,43 +271,8 @@ def get_week_schedules(st_session_state) -> list[dict]:
                 week_schedules.append(s)
         except:
             continue
-
+    
     return week_schedules
-
-
-def get_all_tasks_sorted(st_session_state) -> list[dict]:
-    """
-    Get all schedules sorted by date and time from closest to farthest.
-
-    Returns:
-        List of schedules sorted by date and start_time
-    """
-    return sorted(
-        st_session_state.schedules,
-        key=lambda x: (x.get('date', ''), x.get('start_time', ''))
-    )
-
-
-def get_next_four_weeks_schedules(st_session_state) -> list[dict]:
-    """
-    Get schedules for the next 4 weeks.
-
-    Returns:
-        List of schedules for the next 4 weeks
-    """
-    today = today_local(st_session_state)
-    end_date = today + timedelta(days=28)  # 4 weeks from today
-
-    four_weeks_schedules = []
-    for s in st_session_state.schedules:
-        try:
-            schedule_date = datetime.fromisoformat(s['date']).date()
-            if today <= schedule_date <= end_date:
-                four_weeks_schedules.append(s)
-        except:
-            continue
-
-    return four_weeks_schedules
 
 
 def format_schedule_display(schedule: dict) -> str:
