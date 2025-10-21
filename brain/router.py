@@ -82,20 +82,26 @@ class Router:
         """
         text_lower = text.lower()
         
-        # PLAN_CREATE keywords
+        # PLAN_CREATE keywords (including recurring patterns)
         create_keywords = [
             'add', 'schedule', 'create', 'plan', 'book', 'set up', 'set',
-            'block time', 'block', 'reminder', 'remind', 'new task', 'new'
+            'block time', 'block', 'reminder', 'remind', 'new task', 'new',
+            'every', 'daily', 'recurring', 'repeating', 'each'
         ]
         create_score = sum(1 for kw in create_keywords if kw in text_lower)
-        
-        # PLAN_EDIT keywords
+
+        # PLAN_EDIT keywords (including bulk operations)
         edit_keywords = [
             'move', 'reschedule', 'change', 'delay', 'extend', 'rename',
             'delete', 'remove', 'cancel', 'shorten', 'postpone', 'shift',
-            'update', 'modify', 'edit', 'complete', 'done', 'finish'
+            'update', 'modify', 'edit', 'complete', 'done', 'finish',
+            'clear', 'delete all', 'remove all', 'clear all'
         ]
         edit_score = sum(1 for kw in edit_keywords if kw in text_lower)
+
+        # Boost edit score for bulk delete patterns
+        if any(phrase in text_lower for phrase in ['delete all', 'clear all', 'remove all', 'clear everything']):
+            edit_score += 2
         
         # PLAN_CHECK keywords
         check_keywords = [

@@ -161,7 +161,7 @@ def generate_id() -> str:
 
 
 def add_schedule(st_session_state, title: str, date_str: str, start_time: str,
-                 duration: int, end_time: Optional[str] = None) -> dict:
+                 duration: int, end_time: Optional[str] = None, recurrence_id: Optional[str] = None) -> dict:
     """
     Add a new schedule entry.
 
@@ -172,6 +172,7 @@ def add_schedule(st_session_state, title: str, date_str: str, start_time: str,
         start_time: Start time in HH:MM format
         duration: Duration in minutes
         end_time: Optional end time in HH:MM format
+        recurrence_id: Optional UUID linking recurring tasks
 
     Returns:
         Created schedule entry
@@ -189,7 +190,8 @@ def add_schedule(st_session_state, title: str, date_str: str, start_time: str,
         'duration': duration,
         'type': infer_event_type(title),
         'completed': False,
-        'created_at': now_local(st_session_state).isoformat()
+        'created_at': now_local(st_session_state).isoformat(),
+        'recurrence_id': recurrence_id  # None for one-time tasks, UUID for recurring
     }
 
     st_session_state.schedules.append(entry)
@@ -446,25 +448,60 @@ def try_handle_confirmation(st_session_state, user_text: str) -> bool:
         stage = st_session_state.stage
 
         if stage == "PLAN_CREATE" and proposal:
-            # Create new schedule
-            add_schedule(
-                st_session_state,
-                title=proposal.get('title', 'New Task'),
-                date_str=proposal.get('date', today_local(st_session_state).isoformat()),
-                start_time=proposal.get('start_time', '09:00'),
-                duration=proposal.get('duration', 60),
-                end_time=proposal.get('end_time')
-            )
-            push_bot(st_session_state, "Saved ✅ Your plan is on the calendar. What else can I help you with?")
+            # Check if this is a recurring task
+            if proposal.get('is_recurring'):
+                # Create multiple tasks
+                tasks = proposal.get('tasks', [])
+                recurrence_id = proposal.get('recurrence_id')
+
+                created_count = 0
+                for task_data in tasks:
+                    add_schedule(
+                        st_session_state,
+                        title=task_data['title'],
+                        date_str=task_data['date'],
+                        start_time=task_data['start_time'],
+                        duration=task_data['duration'],
+                        end_time=task_data['end_time'],
+                        recurrence_id=recurrence_id
+                    )
+                    created_count += 1
+
+                push_bot(st_session_state, f"Saved ✅ Created {created_count} recurring tasks. What else can I help you with?")
+
+            else:
+                # Create single schedule
+                add_schedule(
+                    st_session_state,
+                    title=proposal.get('title', 'New Task'),
+                    date_str=proposal.get('date', today_local(st_session_state).isoformat()),
+                    start_time=proposal.get('start_time', '09:00'),
+                    duration=proposal.get('duration', 60),
+                    end_time=proposal.get('end_time')
+                )
+                push_bot(st_session_state, "Saved ✅ Your plan is on the calendar. What else can I help you with?")
 
         elif stage == "PLAN_EDIT" and proposal:
             # Apply edit
-            if proposal.get('action') == 'delete':
+            if proposal.get('action') == 'bulk_delete':
+                # Delete multiple tasks
+                ids_to_delete = proposal.get('ids', [])
+                deleted_count = 0
+                for task_id in ids_to_delete:
+                    if delete_schedule(st_session_state, task_id):
+                        deleted_count += 1
+
+                filter_desc = proposal.get('filter_desc', 'tasks')
+                push_bot(st_session_state, f"Saved ✅ Deleted {deleted_count} {filter_desc}. What else can I help you with?")
+
+            elif proposal.get('action') == 'delete':
                 delete_schedule(st_session_state, proposal['id'])
                 push_bot(st_session_state, "Saved ✅ Task deleted. What else can I help you with?")
+
             elif proposal.get('action') == 'complete':
                 mark_complete(st_session_state, proposal['id'])
                 push_bot(st_session_state, "Saved ✅ Task marked complete. What else can I help you with?")
+
             else:
                 update_schedule(st_session_state, proposal['id'], proposal.get('changes', {}))
                 push_bot(st_session_state, "Saved ✅ Task updated. What else can I help you with?")
