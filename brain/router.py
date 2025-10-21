@@ -3,9 +3,14 @@
 Router: Intent classification to determine which bot should handle the request.
 Uses keyword rules + LLM tie-breaker for ambiguous cases.
 """
+import logging
 from typing import Optional
 from core.contracts import RouteDecision, Stage
 from core.llm import LLM
+
+# Setup logger for debugging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 class Router:
@@ -33,29 +38,40 @@ class Router:
     def route(self, user_text: str, awaiting_confirmation: bool = False) -> RouteDecision:
         """
         Route user message to appropriate stage.
-        
+
         Args:
             user_text: User's message
             awaiting_confirmation: If True, don't route (return current stage)
-            
+
         Returns:
             RouteDecision with stage and confidence
         """
+        logger.info("=" * 60)
+        logger.info(f"🧭 ROUTER.route() called with: '{user_text}'")
+
         # Don't re-route if awaiting confirmation
         if awaiting_confirmation:
+            logger.info("   ⏸️ Awaiting confirmation - skipping routing")
             return RouteDecision(stage="OTHER", confidence=1.0)
-        
+
         # Try keyword-based classification first
         keyword_decision = self._classify_by_keywords(user_text)
-        
+        logger.info(f"   📝 Keyword decision: {keyword_decision.stage} (confidence: {keyword_decision.confidence:.2f})")
+
         # If high confidence, use it
         if keyword_decision.confidence >= 0.7:
+            logger.info(f"   ✅ High confidence - using keyword decision: {keyword_decision.stage}")
             return keyword_decision
-        
+
         # Otherwise, use LLM tie-breaker
+        logger.info("   ⚠️ Low confidence - calling LLM for tie-breaking...")
         llm_decision = self._classify_by_llm(user_text)
-        
-        return llm_decision if llm_decision else keyword_decision
+
+        final_decision = llm_decision if llm_decision else keyword_decision
+        logger.info(f"   🎯 FINAL DECISION: {final_decision.stage} (confidence: {final_decision.confidence:.2f})")
+        logger.info("=" * 60)
+
+        return final_decision
     
     def _classify_by_keywords(self, text: str) -> RouteDecision:
         """
