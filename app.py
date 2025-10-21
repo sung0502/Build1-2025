@@ -20,8 +20,7 @@ from core.contracts import BotRequest
 from core.llm import LLM
 from core.state import (
     ensure_session_defaults, now_local, today_local,
-    get_today_schedules, get_week_schedules, get_all_tasks_sorted,
-    get_next_four_weeks_schedules, format_schedule_display,
+    get_today_schedules, get_week_schedules, format_schedule_display,
     schedules_snapshot_sorted, push_user, push_bot, try_handle_confirmation
 )
 
@@ -142,60 +141,6 @@ st.markdown("""
     .task-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    }
-
-    .task-card-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: #1e293b;
-        margin: 0 0 0.5rem 0;
-    }
-
-    .task-card-time {
-        font-size: 0.9rem;
-        color: #64748b;
-        margin: 0.25rem 0;
-    }
-
-    .task-card-type {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        margin-top: 0.5rem;
-    }
-
-    .task-type-work {
-        background: #dbeafe;
-        color: #1e40af;
-    }
-
-    .task-type-meeting {
-        background: #fef3c7;
-        color: #92400e;
-    }
-
-    .task-type-personal {
-        background: #d1fae5;
-        color: #065f46;
-    }
-
-    .task-type-break {
-        background: #f3f4f6;
-        color: #374151;
-    }
-
-    .calendar-week {
-        margin: 1rem 0;
-    }
-
-    .calendar-week-header {
-        font-weight: 600;
-        color: #475569;
-        margin-bottom: 0.5rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid #e2e8f0;
     }
 
     .section-header {
@@ -480,111 +425,72 @@ with col_left:
                     st.rerun()
 
 with col_right:
-    # Helper function to render a task card
-    def render_task_card(task: dict, show_checkbox: bool = True):
-        """Render a task card with title, time, and type."""
-        event_type_emoji = {
-            'work': '💼',
-            'meeting': '🤝',
-            'personal': '🏃',
-            'break': '☕'
-        }
+    # Tasks Section
+    st.markdown('<div class="section-header"><h3>📋 Today\'s Tasks</h3></div>', unsafe_allow_html=True)
 
-        emoji = event_type_emoji.get(task.get('type', 'work'), '📅')
-        type_class = f"task-type-{task.get('type', 'work')}"
-        type_label = task.get('type', 'work').capitalize()
+    today_tasks = get_today_schedules(st.session_state)
 
-        time_str = task.get('start_time', '??:??')
-        if task.get('end_time'):
-            time_str += f" - {task['end_time']}"
-
-        # Create task card HTML
-        card_html = f"""
-        <div class="task-card">
-            <div class="task-card-title">{emoji} {task['title']}</div>
-            <div class="task-card-time">⏰ {time_str}</div>
-            <span class="task-card-type {type_class}">{type_label}</span>
-        </div>
-        """
-
-        if show_checkbox:
-            col1, col2 = st.columns([1, 9])
+    if today_tasks:
+        for task in sorted(today_tasks, key=lambda x: x['start_time']):
+            col1, col2 = st.columns([1, 4])
             with col1:
-                checked = st.checkbox("", value=task['completed'], key=f"cb_{task['id']}", label_visibility="collapsed")
+                checked = st.checkbox("", value=task['completed'], key=f"cb_{task['id']}")
                 if checked != task['completed']:
                     task['completed'] = checked
                     st.rerun()
             with col2:
-                st.markdown(card_html, unsafe_allow_html=True)
+                st.markdown(format_schedule_display(task))
+    else:
+        st.info("No tasks for today. Add one in the chat!")
+
+    # Week Tasks Expander
+    with st.expander("📅 This Week's Tasks", expanded=False):
+        week_tasks = get_week_schedules(st.session_state)
+
+        if week_tasks:
+            by_date = {}
+            for t in week_tasks:
+                by_date.setdefault(t['date'], []).append(t)
+
+            for date_str in sorted(by_date.keys()):
+                date_obj = datetime.fromisoformat(date_str).date()
+                st.markdown(f"**{date_obj.strftime('%a, %b %d')}** ({len(by_date[date_str])} tasks)")
+                for t in sorted(by_date[date_str], key=lambda x: x['start_time']):
+                    st.markdown(f"  {format_schedule_display(t)}")
+                st.markdown("")
         else:
-            st.markdown(card_html, unsafe_allow_html=True)
+            st.info("No tasks this week.")
 
-    # Tabs for Today, Tasks, Calendar
-    tab1, tab2, tab3 = st.tabs(["📋 Today", "📝 Tasks", "📅 Calendar"])
+    st.markdown("")  # Spacing
 
-    # TODAY TAB
-    with tab1:
-        st.markdown("### Tasks scheduled for today")
-        today_tasks = get_today_schedules(st.session_state)
+    # Calendar Section
+    st.markdown('<div class="section-header"><h3>📅 Weekly Calendar</h3></div>', unsafe_allow_html=True)
 
-        if today_tasks:
-            sorted_tasks = sorted(today_tasks, key=lambda x: x['start_time'])
-            for task in sorted_tasks:
-                render_task_card(task, show_checkbox=True)
-        else:
-            st.info("No tasks for today. Add one in the chat!")
+    today = today_local(st.session_state)
+    start_week = today - timedelta(days=today.weekday())
+    week_dates = [start_week + timedelta(days=i) for i in range(7)]
 
-    # TASKS TAB
-    with tab2:
-        st.markdown("### All tasks ordered by time")
-        all_tasks = get_all_tasks_sorted(st.session_state)
+    # Calendar header
+    cols = st.columns(7)
+    for i, d in enumerate(week_dates):
+        with cols[i]:
+            is_today = d == today
+            st.markdown(f"**{d.strftime('%a')}**  \n{'📍' if is_today else ''}{d.strftime('%d')}")
 
-        if all_tasks:
-            for task in all_tasks:
-                render_task_card(task, show_checkbox=True)
-        else:
-            st.info("No tasks scheduled. Start by adding one in the chat!")
+    st.divider()
 
-    # CALENDAR TAB
-    with tab3:
-        st.markdown("### Next 4 weeks schedule")
-
-        today = today_local(st.session_state)
-        four_weeks_tasks = get_next_four_weeks_schedules(st.session_state)
-
-        if four_weeks_tasks:
-            # Group tasks by week
-            tasks_by_week = {}
-            for task in four_weeks_tasks:
-                task_date = datetime.fromisoformat(task['date']).date()
-                # Calculate week number (0-3 for 4 weeks)
-                days_from_today = (task_date - today).days
-                week_num = days_from_today // 7
-
-                if week_num not in tasks_by_week:
-                    tasks_by_week[week_num] = []
-                tasks_by_week[week_num].append(task)
-
-            # Display each week
-            for week_num in sorted(tasks_by_week.keys()):
-                week_start = today + timedelta(days=week_num * 7)
-                week_end = week_start + timedelta(days=6)
-
-                st.markdown(f'<div class="calendar-week-header">Week {week_num + 1}: {week_start.strftime("%b %d")} - {week_end.strftime("%b %d")}</div>', unsafe_allow_html=True)
-
-                # Sort tasks by date and time
-                week_tasks = sorted(tasks_by_week[week_num], key=lambda x: (x.get('date', ''), x.get('start_time', '')))
-
-                # Display tasks for this week
-                for task in week_tasks:
-                    task_date = datetime.fromisoformat(task['date']).date()
-                    time_str = task.get('start_time', '??:??')
-
-                    st.markdown(f"**{task_date.strftime('%a, %b %d')}** - {time_str} - {task['title']}")
-
-                st.markdown("")  # Spacing between weeks
-        else:
-            st.info("No tasks scheduled for the next 4 weeks.")
+    # Calendar content
+    cols = st.columns(7)
+    for i, d in enumerate(week_dates):
+        with cols[i]:
+            day_tasks = [s for s in st.session_state.schedules if s['date'] == d.isoformat()]
+            if day_tasks:
+                for s in sorted(day_tasks, key=lambda x: x['start_time']):
+                    emoji = {'work': '🔵', 'meeting': '🟡', 'personal': '🟢', 'break': '⚪'}.get(s['type'], '⚫')
+                    st.markdown(f"{emoji} {s['start_time'][:5]}")
+                    st.caption(s['title'][:15])
+            else:
+                st.markdown("—")
 
 # Analytics Modal
 if st.session_state.show_analytics:
